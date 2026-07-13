@@ -21,7 +21,10 @@ git -C "$REPO_ROOT" worktree add --detach "$TMP" "$BRANCH" >/dev/null
 sed -i '' 's|<title>Momentum</title>|<title>Momentum β</title>|' "$TMP/index.html"
 sed -i '' 's|name="apple-mobile-web-app-title" content="Momentum"|name="apple-mobile-web-app-title" content="Momentum β"|' "$TMP/index.html"
 sed -i '' 's|"name": "Momentum"|"name": "Momentum β"|; s|"short_name": "Momentum"|"short_name": "Momentum β"|' "$TMP/manifest.webmanifest"
-sed -i '' "s|const CACHE = '[^']*'|const CACHE = 'beta-${BRANCH//\//-}-${SHA}'|" "$TMP/sw.js"
+# Include a publish timestamp so re-publishing the same commit still busts
+# the service-worker cache on devices that already installed the prior build.
+PUB="$(date +%s)"
+sed -i '' "s|const CACHE = '[^']*'|const CACHE = 'beta-${BRANCH//\//-}-${SHA}-${PUB}'|" "$TMP/sw.js"
 sed -i '' "s|</body>|<div style=\"position:fixed;bottom:2px;right:8px;font-size:9px;color:#5b6672;z-index:99;pointer-events:none\">beta ${BRANCH} @ ${SHA}</div></body>|" "$TMP/index.html"
 
 git -C "$TMP" add -A
