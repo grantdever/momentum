@@ -3,6 +3,17 @@ import { addDays, weekStart } from './dates.js';
 
 export const CORE_HABITS = ['alcoholFree', 'cookedAtHome', 'sleptOnTime', 'workSprint', 'walked'];
 
+export const ALL_HABITS = [
+  'trained',
+  'alcoholFree',
+  'cookedAtHome',
+  'sleptOnTime',
+  'workSprint',
+  'walked',
+  'bonusReading',
+  'bonusNoGaming',
+];
+
 export function coreCount(entry) {
   if (!entry) return 0;
   let n = 0;
@@ -148,6 +159,18 @@ export function cumulativeStats(entries, threshold, todayIso) {
   }
 
   return { totalLogged, totalCoreHit, totalTrained, bestStreak, offDayCount, last30Hit };
+}
+
+export function habitCounts(entries) {
+  const counts = {};
+  for (const h of ALL_HABITS) counts[h] = 0;
+  for (const k of Object.keys(entries)) {
+    const e = entries[k];
+    for (const h of ALL_HABITS) {
+      if (e[h]) counts[h]++;
+    }
+  }
+  return counts;
 }
 
 export function historyWeeks(entries, threshold, todayIso, weeks = 5) {

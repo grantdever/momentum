@@ -9,7 +9,20 @@ import {
   weekProgress,
   cumulativeStats,
   historyWeeks,
+  habitCounts,
+  ALL_HABITS,
 } from './streaks.js';
+
+const HABIT_DISPLAY = {
+  trained: 'Trained',
+  alcoholFree: 'Alcohol-free',
+  cookedAtHome: 'Cooked',
+  sleptOnTime: 'Asleep on time',
+  workSprint: 'One deep block',
+  walked: 'Walked',
+  bonusReading: 'Read',
+  bonusNoGaming: 'No gaming',
+};
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -232,6 +245,31 @@ export function renderHistory(state) {
       div.setAttribute('aria-label', detail);
       grid.appendChild(div);
     }
+  }
+
+  renderHabitCounts(state);
+}
+
+function renderHabitCounts(state) {
+  const el = document.getElementById('habit-counts');
+  if (!el) return;
+  const counts = habitCounts(state.entries);
+  el.innerHTML = '';
+  // Canonical order, plain counts — deliberately never ranked or judged.
+  for (const habit of ALL_HABITS) {
+    const row = document.createElement('div');
+    row.className = 'habit-count-row';
+    if (habit === 'bonusReading' || habit === 'bonusNoGaming') {
+      row.classList.add('bonus');
+    }
+    const label = document.createElement('span');
+    label.textContent = HABIT_DISPLAY[habit];
+    const value = document.createElement('span');
+    value.className = 'habit-count-value';
+    value.textContent = `${counts[habit]} days`;
+    row.appendChild(label);
+    row.appendChild(value);
+    el.appendChild(row);
   }
 }
 
