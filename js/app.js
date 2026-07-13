@@ -218,10 +218,79 @@ function init() {
   window.addEventListener('focus', checkRollover);
   setInterval(checkRollover, 60000);
 
-  document.getElementById('habit-list').addEventListener('click', (e) => {
+  // Hold-to-complete (settings.holdToComplete, default off): marking a core
+  // habit ON requires a ~500ms press; plain tap still un-marks. Keyboard and
+  // assistive-tech clicks (no recent pointerdown) always toggle directly.
+  const HOLD_MS = 500;
+  const HOLD_CANCEL_PX = 10;
+  const habitList = document.getElementById('habit-list');
+  let holdTimer = null;
+  let holdBtn = null;
+  let holdStartX = 0;
+  let holdStartY = 0;
+  let swallowNextClick = false;
+  let lastPointerBtn = null;
+  let lastPointerDownAt = 0;
+
+  function cancelHold() {
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = null;
+    if (holdBtn) holdBtn.classList.remove('holding');
+    holdBtn = null;
+  }
+
+  habitList.addEventListener('pointerdown', (e) => {
+    swallowNextClick = false;
+    if (!state.settings.holdToComplete) return;
+    const btn = e.target.closest('.habit-row[data-habit]');
+    if (!btn) return;
+    lastPointerBtn = btn;
+    lastPointerDownAt = Date.now();
+    if (btn.getAttribute('aria-pressed') === 'true') return;
+    holdBtn = btn;
+    holdStartX = e.clientX;
+    holdStartY = e.clientY;
+    btn.classList.add('holding');
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      const target = holdBtn;
+      cancelHold();
+      swallowNextClick = true;
+      hideRibbon();
+      toggleHabit(state.activeDate, target.dataset.habit);
+    }, HOLD_MS);
+  });
+
+  habitList.addEventListener('pointermove', (e) => {
+    if (!holdBtn) return;
+    if (
+      Math.abs(e.clientX - holdStartX) > HOLD_CANCEL_PX ||
+      Math.abs(e.clientY - holdStartY) > HOLD_CANCEL_PX
+    ) {
+      cancelHold();
+    }
+  });
+
+  habitList.addEventListener('pointerup', cancelHold);
+  habitList.addEventListener('pointercancel', cancelHold);
+
+  habitList.addEventListener('click', (e) => {
     const btn = e.target.closest('.habit-row[data-habit]');
     if (!btn) return;
     hideRibbon();
+    if (swallowNextClick) {
+      swallowNextClick = false;
+      return;
+    }
+    if (
+      state.settings.holdToComplete &&
+      btn.getAttribute('aria-pressed') !== 'true' &&
+      e.detail > 0 &&
+      btn === lastPointerBtn &&
+      Date.now() - lastPointerDownAt < 700
+    ) {
+      return; // real pointer tap on an unpressed row: completing requires the hold
+    }
     toggleHabit(state.activeDate, btn.dataset.habit);
   });
 
@@ -293,6 +362,7 @@ function init() {
     settings.github.repo = document.getElementById('gh-repo').value.trim();
     settings.github.path = document.getElementById('gh-path').value.trim() || 'data.json';
     settings.github.token = document.getElementById('gh-token').value;
+    settings.holdToComplete = document.getElementById('set-hold').checked;
   }
 
   document.getElementById('view-settings').addEventListener('change', () => {

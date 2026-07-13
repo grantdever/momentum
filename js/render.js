@@ -284,6 +284,8 @@ export function renderSettingsForm(state) {
   const ghPathEl = document.getElementById('gh-path');
   const ghTokenEl = document.getElementById('gh-token');
 
+  const holdEl = document.getElementById('set-hold');
+  if (holdEl) holdEl.checked = !!settings.holdToComplete;
   if (thresholdEl && document.activeElement !== thresholdEl) thresholdEl.value = settings.coreThreshold;
   if (sleepEl && document.activeElement !== sleepEl) sleepEl.value = settings.sleepTargetTime;
   if (gymEl && document.activeElement !== gymEl) gymEl.value = settings.gymTargetPerWeek;

@@ -255,10 +255,21 @@ summary:focus-visible {
   cursor: pointer;
   position: relative;
   transition: transform 80ms ease;
+  touch-action: pan-y;
 }
 
 .habit-row:active {
   transform: scale(0.98);
+}
+
+.habit-row.holding {
+  border-color: var(--accent);
+}
+
+.habit-row.holding::after {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  transition: background 480ms linear, border-color 120ms ease;
 }
 
 .habit-label {
@@ -625,6 +636,12 @@ summary:focus-visible {
 .checkbox-label input[type="checkbox"] {
   width: 20px;
   height: 20px;
+}
+
+.setting-caption {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 0 0 4px;
 }
 
 #export-btn {
