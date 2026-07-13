@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Momentum">
+<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="stylesheet" href="./css/style.css">
+<title>Momentum</title>
+</head>
+<body>
+<div id="app">
+
+  <section id="view-today" class="view active">
+    <header class="today-header">
+      <div class="streak-block">
+        <div id="streak-number" class="streak-number">0</div>
+        <div class="streak-caption">day core streak</div>
+      </div>
+      <div class="training-block">
+        <div id="training-streak" class="training-streak">0</div>
+        <div class="streak-caption">week training streak</div>
+        <div id="week-dots" class="week-dots" aria-label="Training days this week"></div>
+      </div>
+      <div id="sync-status" class="sync-status" aria-live="polite"></div>
+    </header>
+
+    <div id="banner" class="banner" hidden>
+      <span id="banner-message" class="banner-message"></span>
+      <button type="button" data-dismiss class="banner-dismiss" aria-label="Dismiss">&times;</button>
+    </div>
+
+    <div id="day-selector" class="day-selector" role="group" aria-label="Day">
+      <button type="button" data-day-offset="0" class="day-btn" aria-pressed="true">Today</button>
+      <button type="button" data-day-offset="-1" class="day-btn" aria-pressed="false">Yesterday</button>
+    </div>
+
+    <div id="habit-list" class="habit-list">
+      <button type="button" class="habit-row" data-habit="trained" aria-pressed="false">
+        <span class="habit-label">Trained</span>
+      </button>
+      <button type="button" class="habit-row" data-habit="alcoholFree" aria-pressed="false">
+        <span class="habit-label">Alcohol-free</span>
+      </button>
+      <button type="button" class="habit-row" data-habit="cookedAtHome" aria-pressed="false">
+        <span class="habit-label">Cooked</span>
+      </button>
+      <button type="button" class="habit-row" data-habit="sleptOnTime" aria-pressed="false">
+        <span class="habit-label" id="sleep-label">Asleep by 10:00 PM</span>
+      </button>
+      <button type="button" class="habit-row" data-habit="workSprint" aria-pressed="false">
+        <span class="habit-label">One deep block</span>
+      </button>
+      <button type="button" class="habit-row" data-habit="walked" aria-pressed="false">
+        <span class="habit-label">Walked</span>
+      </button>
+    </div>
+
+    <details id="secondary-section" class="secondary-section">
+      <summary>More</summary>
+
+      <div id="bonus-section" class="bonus-section">
+        <button type="button" class="habit-row bonus-row" data-habit="bonusReading" aria-pressed="false">
+          <span class="habit-label">Read</span>
+        </button>
+        <button type="button" class="habit-row bonus-row" data-habit="bonusNoGaming" aria-pressed="false">
+          <span class="habit-label">No gaming</span>
+        </button>
+      </div>
+
+      <textarea id="note-input" class="note-input" placeholder="Note" rows="2"></textarea>
+
+      <div class="offday-block">
+        <button type="button" id="offday-toggle" class="offday-toggle" aria-pressed="false">Off day</button>
+        <p class="offday-caption">Doesn't count, doesn't break</p>
+      </div>
+    </details>
+
+    <div id="cumulative-stats" class="cumulative-stats"></div>
+  </section>
+
+  <section id="view-history" class="view">
+    <h2 class="view-title">History</h2>
+    <div id="history-grid" class="history-grid"></div>
+    <div class="history-legend">
+      <span class="legend-label">Less</span>
+      <span class="legend-swatch i0"></span>
+      <span class="legend-swatch i1"></span>
+      <span class="legend-swatch i2"></span>
+      <span class="legend-swatch i3"></span>
+      <span class="legend-swatch i4"></span>
+      <span class="legend-swatch i5"></span>
+      <span class="legend-label">More</span>
+      <span class="legend-swatch off" aria-hidden="true"></span>
+      <span class="legend-label">Off day</span>
+      <span class="legend-swatch trained" aria-hidden="true"></span>
+      <span class="legend-label">Trained</span>
+    </div>
+  </section>
+
+  <section id="view-settings" class="view">
+    <h2 class="view-title">Settings</h2>
+
+    <div class="settings-group">
+      <label for="set-threshold">Core threshold (of 5 daily habits)</label>
+      <input type="number" id="set-threshold" min="1" max="5" step="1">
+
+      <label for="set-sleep">Sleep target</label>
+      <input type="time" id="set-sleep">
+
+      <label for="set-gym">Training days per week</label>
+      <input type="number" id="set-gym" min="1" max="7" step="1">
+    </div>
+
+    <fieldset class="settings-group gh-sync">
+      <legend>GitHub Sync</legend>
+      <p class="sync-note">The token is stored only on this device in localStorage — it is never sent anywhere except GitHub's API.</p>
+
+      <label class="checkbox-label" for="gh-enabled">
+        <input type="checkbox" id="gh-enabled">
+        Enable sync
+      </label>
+
+      <label for="gh-owner">Owner</label>
+      <input type="text" id="gh-owner" autocomplete="off" autocapitalize="off" spellcheck="false">
+
+      <label for="gh-repo">Repo</label>
+      <input type="text" id="gh-repo" autocomplete="off" autocapitalize="off" spellcheck="false">
+
+      <label for="gh-path">Path</label>
+      <input type="text" id="gh-path" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="data.json">
+
+      <label for="gh-token">Token</label>
+      <input type="password" id="gh-token" autocomplete="off" autocapitalize="off" spellcheck="false">
+
+      <p class="sync-how">How sync works: on load, remote and local entries merge by most-recent edit; saves are debounced and pushed as a commit a few seconds after your last change.</p>
+    </fieldset>
+
+    <div class="settings-group">
+      <button type="button" id="export-btn">Export JSON</button>
+    </div>
+  </section>
+
+  <nav id="nav" class="nav" role="tablist" aria-label="Views">
+    <button type="button" data-view="today" class="nav-btn active">Today</button>
+    <button type="button" data-view="history" class="nav-btn">History</button>
+    <button type="button" data-view="settings" class="nav-btn">Settings</button>
+  </nav>
+
+</div>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
