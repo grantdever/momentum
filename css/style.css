@@ -256,10 +256,22 @@ summary:focus-visible {
   position: relative;
   transition: transform 80ms ease;
   touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .habit-row:active {
   transform: scale(0.98);
+}
+
+/* Hold-to-complete ring fill: a clock sweep that tracks the press linearly,
+   finishing exactly as the toggle fires — then the pressed state's full
+   accent + checkmark is the payoff. */
+@property --hold-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
 }
 
 .habit-row.holding {
@@ -267,9 +279,15 @@ summary:focus-visible {
 }
 
 .habit-row.holding::after {
-  background: var(--accent-dim);
   border-color: var(--accent);
-  transition: background 480ms linear, border-color 120ms ease;
+  background: conic-gradient(var(--accent) var(--hold-angle), transparent 0);
+  animation: hold-fill var(--hold-ms, 650ms) linear forwards;
+}
+
+@keyframes hold-fill {
+  to {
+    --hold-angle: 360deg;
+  }
 }
 
 .habit-label {

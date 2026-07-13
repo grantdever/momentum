@@ -221,9 +221,12 @@ function init() {
   // Hold-to-complete (settings.holdToComplete, default off): marking a core
   // habit ON requires a ~500ms press; plain tap still un-marks. Keyboard and
   // assistive-tech clicks (no recent pointerdown) always toggle directly.
-  const HOLD_MS = 500;
+  const HOLD_MS = 650;
   const HOLD_CANCEL_PX = 10;
   const habitList = document.getElementById('habit-list');
+  // Single source of truth for hold duration — the CSS sweep animation reads
+  // this so the ring fill always finishes exactly when the toggle fires.
+  habitList.style.setProperty('--hold-ms', `${HOLD_MS}ms`);
   let holdTimer = null;
   let holdBtn = null;
   let holdStartX = 0;
