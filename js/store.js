@@ -3,6 +3,7 @@
 
 const ENTRIES_KEY = 'momentum.entries';
 const SETTINGS_KEY = 'momentum.settings';
+const LAST_OPEN_KEY = 'momentum.lastOpen';
 
 export const DEFAULT_SETTINGS = {
   coreThreshold: 4,
@@ -61,6 +62,18 @@ export function loadSettings() {
 
 export function saveSettings(settings) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+export function loadLastOpen() {
+  try {
+    return localStorage.getItem(LAST_OPEN_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveLastOpen(dateIso) {
+  localStorage.setItem(LAST_OPEN_KEY, dateIso);
 }
 
 export function exportString(entries, settings) {

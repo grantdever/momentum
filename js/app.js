@@ -2,7 +2,16 @@
 // truth for the working session; GitHub sync (if enabled) layers on top.
 
 import { todayISO, addDays } from './dates.js';
-import { loadEntries, saveEntries, loadSettings, saveSettings, exportString } from './store.js';
+import {
+  loadEntries,
+  saveEntries,
+  loadSettings,
+  saveSettings,
+  exportString,
+  loadLastOpen,
+  saveLastOpen,
+} from './store.js';
+import { daySummary } from './streaks.js';
 import { mergeEntries } from './merge.js';
 import { renderAll, renderSyncStatus } from './render.js';
 import {
@@ -154,12 +163,42 @@ function init() {
     }
   }
 
+  let ribbonTimer = null;
+
+  function hideRibbon() {
+    const ribbon = document.getElementById('morning-ribbon');
+    if (ribbon) ribbon.hidden = true;
+    if (ribbonTimer) {
+      clearTimeout(ribbonTimer);
+      ribbonTimer = null;
+    }
+  }
+
+  // First open of a new day: a passive, positive-only glance at yesterday's
+  // chain. Shows nothing when yesterday is unlogged — backfill lives in the
+  // Yesterday tab, and this surface must never carry guilt.
+  function maybeShowMorningRibbon() {
+    const today = todayISO();
+    if (loadLastOpen() === today) return;
+    saveLastOpen(today);
+    const y = daySummary(state.entries, addDays(today, -1));
+    if (!y.logged) return;
+    const ribbon = document.getElementById('morning-ribbon');
+    if (!ribbon) return;
+    ribbon.textContent = y.offDay
+      ? 'yesterday: off day'
+      : `yesterday: ${y.count}/5${y.trained ? ' · trained' : ''}`;
+    ribbon.hidden = false;
+    ribbonTimer = setTimeout(hideRibbon, 8000);
+  }
+
   function checkRollover() {
     const today = todayISO();
     if (today === state.currentDate) return false;
     state.currentDate = today;
     state.activeDate = today;
     renderAll(state);
+    maybeShowMorningRibbon();
     syncOnLoadOrResume();
     return true;
   }
@@ -182,6 +221,7 @@ function init() {
   document.getElementById('habit-list').addEventListener('click', (e) => {
     const btn = e.target.closest('.habit-row[data-habit]');
     if (!btn) return;
+    hideRibbon();
     toggleHabit(state.activeDate, btn.dataset.habit);
   });
 
@@ -290,6 +330,7 @@ function init() {
   });
 
   renderAll(state);
+  maybeShowMorningRibbon();
   syncOnLoadOrResume();
 }
 
