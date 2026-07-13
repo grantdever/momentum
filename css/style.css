@@ -518,6 +518,42 @@ summary:focus-visible {
   background: var(--text);
 }
 
+.counts-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 20px 0 8px;
+  color: var(--text-dim);
+}
+
+.habit-counts {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 14px;
+}
+
+.habit-count-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.habit-count-row:last-child {
+  border-bottom: none;
+}
+
+.habit-count-row.bonus {
+  color: var(--text-dim);
+}
+
+.habit-count-value {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Settings view ---------- */
 
 .settings-group {

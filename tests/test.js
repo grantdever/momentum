@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { todayISO, addDays, weekStart } from '../js/dates.js';
 import {
   CORE_HABITS,
+  ALL_HABITS,
   coreCount,
   dailyStreak,
   weeklyTrainingStreak,
@@ -9,6 +10,7 @@ import {
   cumulativeStats,
   historyGrid,
   historyWeeks,
+  habitCounts,
 } from '../js/streaks.js';
 import { mergeEntries } from '../js/merge.js';
 
@@ -489,6 +491,35 @@ t('historyWeeks: cell flags for logged/off/trained and month-boundary dates', ()
   assert.ok(julyCell.logged && julyCell.offDay && !julyCell.trained);
   const unlogged = flat.find((d) => d.date === '2026-07-02');
   assert.ok(!unlogged.logged && unlogged.count === 0);
+});
+
+// --- per-habit counts ------------------------------------------------------
+
+t('habitCounts: empty entries -> all zeros for all 8 habits', () => {
+  const counts = habitCounts({});
+  assert.equal(Object.keys(counts).length, ALL_HABITS.length);
+  for (const h of ALL_HABITS) assert.equal(counts[h], 0);
+});
+
+t('habitCounts: counts true fields across entries', () => {
+  const entries = {
+    '2026-07-01': e('2026-07-01', { walked: true, trained: true }),
+    '2026-07-02': e('2026-07-02', { walked: true, bonusReading: true }),
+    '2026-07-03': e('2026-07-03', { alcoholFree: true }),
+  };
+  const counts = habitCounts(entries);
+  assert.equal(counts.walked, 2);
+  assert.equal(counts.trained, 1);
+  assert.equal(counts.bonusReading, 1);
+  assert.equal(counts.alcoholFree, 1);
+  assert.equal(counts.cookedAtHome, 0);
+});
+
+t('habitCounts: off-day entries still counted (descriptive, not judged)', () => {
+  const entries = {
+    '2026-07-01': e('2026-07-01', { walked: true, offDay: true }),
+  };
+  assert.equal(habitCounts(entries).walked, 1);
 });
 
 // --- personal data guard -------------------------------------------------
