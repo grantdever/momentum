@@ -173,6 +173,16 @@ export function habitCounts(entries) {
   return counts;
 }
 
+export function daySummary(entries, dateIso) {
+  const e = entries[dateIso];
+  return {
+    logged: !!e,
+    count: e ? coreCount(e) : 0,
+    trained: !!e?.trained,
+    offDay: !!e?.offDay,
+  };
+}
+
 export function historyWeeks(entries, threshold, todayIso, weeks = 5) {
   const currentMonday = weekStart(todayIso);
   const result = [];

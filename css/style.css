@@ -215,6 +215,16 @@ summary:focus-visible {
   font-size: 13px;
 }
 
+.morning-ribbon {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
 /* ---------- Habit rows ---------- */
 
 .habit-list {

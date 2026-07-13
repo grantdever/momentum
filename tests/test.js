@@ -11,6 +11,7 @@ import {
   historyGrid,
   historyWeeks,
   habitCounts,
+  daySummary,
 } from '../js/streaks.js';
 import { mergeEntries } from '../js/merge.js';
 
@@ -520,6 +521,30 @@ t('habitCounts: off-day entries still counted (descriptive, not judged)', () => 
     '2026-07-01': e('2026-07-01', { walked: true, offDay: true }),
   };
   assert.equal(habitCounts(entries).walked, 1);
+});
+
+// --- morning ribbon summary ------------------------------------------------
+
+t('daySummary: logged day reports count, trained, offDay', () => {
+  const entries = {
+    '2026-07-11': hitEntry('2026-07-11', { trained: true }),
+  };
+  const s = daySummary(entries, '2026-07-11');
+  assert.deepEqual(s, { logged: true, count: 5, trained: true, offDay: false });
+});
+
+t('daySummary: off day reported as off with its count', () => {
+  const entries = {
+    '2026-07-11': e('2026-07-11', { offDay: true, walked: true }),
+  };
+  const s = daySummary(entries, '2026-07-11');
+  assert.ok(s.logged && s.offDay);
+  assert.equal(s.count, 1);
+});
+
+t('daySummary: unlogged day -> logged false, zeros', () => {
+  const s = daySummary({}, '2026-07-11');
+  assert.deepEqual(s, { logged: false, count: 0, trained: false, offDay: false });
 });
 
 // --- personal data guard -------------------------------------------------

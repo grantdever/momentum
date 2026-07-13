@@ -1,5 +1,5 @@
 // Momentum service worker — minimal versioned cache-first strategy.
-const CACHE = 'momentum-v3';
+const CACHE = 'momentum-v4';
 
 const ASSETS = [
   './',
