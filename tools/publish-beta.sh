@@ -25,6 +25,6 @@ sed -i '' "s|const CACHE = '[^']*'|const CACHE = 'beta-${BRANCH//\//-}-${SHA}'|"
 
 git -C "$TMP" add -A
 git -C "$TMP" commit -q -m "beta: ${BRANCH} @ ${SHA}"
-git -C "$TMP" push -f beta HEAD:main
+git -C "$TMP" push -f beta HEAD:refs/heads/main
 
 echo "published ${BRANCH} (${SHA}) -> https://grantdever.github.io/momentum-beta/"
