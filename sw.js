@@ -1,5 +1,5 @@
 // Momentum service worker — minimal versioned cache-first strategy.
-const CACHE = 'momentum-v4';
+const CACHE = 'momentum-v5';
 
 const ASSETS = [
   './',
@@ -21,7 +21,10 @@ const ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE)
-      .then((cache) => cache.addAll(ASSETS))
+      // cache: 'reload' bypasses the browser's HTTP cache (GitHub Pages
+      // serves with max-age=600), so a new build can never be populated
+      // with stale copies of the old one.
+      .then((cache) => cache.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' }))))
       .then(() => self.skipWaiting())
   );
 });
