@@ -8,8 +8,15 @@ import {
   weeklyTrainingStreak,
   weekProgress,
   cumulativeStats,
-  historyGrid,
+  historyWeeks,
 } from './streaks.js';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function monthDay(iso) {
+  const [, m, d] = iso.split('-').map(Number);
+  return `${MONTHS[m - 1]} ${d}`;
+}
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -65,9 +72,12 @@ function renderStreakBlock(state, todayIso) {
   const captionEl = streakEl.parentElement?.querySelector('.streak-caption');
   streakEl.textContent = String(streak);
   if (captionEl) {
-    // Non-punitive framing: a broken chain reads as the start of a fresh one.
+    // Achievement framing on a broken chain: pair day 1 with the stats that
+    // never reset, so history reads as banked progress rather than loss.
     captionEl.textContent =
-      streak === 0 && stats.totalLogged > 0 ? 'start again — day 1' : 'day core streak';
+      streak === 0 && stats.totalLogged > 0
+        ? `day 1 — ${stats.totalLogged} days logged, best ${stats.bestStreak}`
+        : 'day core streak';
   }
 
   const trainingStreak = weeklyTrainingStreak(state.entries, state.settings.gymTargetPerWeek, todayIso);
@@ -84,6 +94,17 @@ function renderStreakBlock(state, todayIso) {
     if (dayIso === todayIso) dot.classList.add('today');
     dot.title = `${WEEKDAY_LABELS[i]}${progress.days[i] ? ' — trained' : ''}`;
     dotsEl.appendChild(dot);
+  }
+
+  const countEl = document.getElementById('week-count');
+  if (countEl) {
+    const target = state.settings.gymTargetPerWeek;
+    const remaining = target - progress.count;
+    // "To-go" framing once past halfway pulls harder late in the week.
+    countEl.textContent =
+      remaining > 0 && progress.count >= Math.ceil(target / 2)
+        ? `${remaining} to go`
+        : `${progress.count}/${target} this week`;
   }
 }
 
@@ -105,8 +126,16 @@ function renderHabitRows(state) {
 
   const sleepLabel = document.getElementById('sleep-label');
   if (sleepLabel) {
-    sleepLabel.textContent = `Asleep by ${formatTime12h(state.settings.sleepTargetTime)}`;
+    sleepLabel.textContent = `Asleep by ${formatTime12h(state.settings.sleepTargetTime)} (last night)`;
   }
+
+  const weeklyLabel = document.getElementById('weekly-label');
+  if (weeklyLabel) weeklyLabel.textContent = `Weekly — ${state.settings.gymTargetPerWeek}×`;
+  const dailyLabel = document.getElementById('daily-label');
+  if (dailyLabel) dailyLabel.textContent = `Daily — ${state.settings.coreThreshold} of 5`;
+
+  const offdayChip = document.getElementById('offday-chip');
+  if (offdayChip) offdayChip.hidden = !entry?.offDay;
 
   const noteInput = document.getElementById('note-input');
   if (noteInput && document.activeElement !== noteInput) {
@@ -137,6 +166,8 @@ function renderCumulativeStats(state, todayIso) {
     { value: stats.totalCoreHit, label: 'Core-threshold days' },
     { value: stats.totalTrained, label: 'Days trained' },
     { value: stats.bestStreak, label: 'Best streak' },
+    { value: stats.offDayCount, label: 'Off days' },
+    { value: `${stats.last30Hit}/30`, label: 'Last 30 days' },
   ];
   for (const item of items) {
     const stat = document.createElement('div');
@@ -165,16 +196,42 @@ export function renderHistory(state) {
   const grid = document.getElementById('history-grid');
   if (!grid) return;
   const todayIso = todayISO();
-  const cells = historyGrid(state.entries, state.settings.coreThreshold, todayIso, 30);
+  const weeks = historyWeeks(state.entries, state.settings.coreThreshold, todayIso);
   grid.innerHTML = '';
-  for (const cell of cells) {
+
+  // Column-major grid: first column is weekday labels, then one column per
+  // week (Mon..Sun top to bottom), so weekly rhythm reads across a row.
+  for (const label of WEEKDAY_LABELS) {
     const div = document.createElement('div');
-    const intensity = cell.logged ? Math.min(cell.count, 5) : 0;
-    div.className = `cell i${intensity}`;
-    if (cell.offDay) div.classList.add('off');
-    if (cell.trained) div.classList.add('trained');
-    div.title = cell.date;
+    div.className = 'wd-label';
+    div.textContent = label[0];
+    div.setAttribute('aria-hidden', 'true');
     grid.appendChild(div);
+  }
+
+  for (const week of weeks) {
+    for (const cell of week.days) {
+      const div = document.createElement('div');
+      if (cell.future) {
+        div.className = 'cell future';
+        grid.appendChild(div);
+        continue;
+      }
+      const intensity = cell.logged ? Math.min(cell.count, 5) : 0;
+      div.className = `cell i${intensity}`;
+      if (cell.offDay) div.classList.add('off');
+      if (cell.trained) div.classList.add('trained');
+      const parts = [
+        cell.logged ? `${cell.count} of 5` : 'not logged',
+        cell.offDay ? 'off day' : '',
+        cell.trained ? 'trained' : '',
+      ].filter(Boolean);
+      const detail = `${monthDay(cell.date)}: ${parts.join(', ')}`;
+      div.dataset.detail = detail;
+      div.setAttribute('role', 'img');
+      div.setAttribute('aria-label', detail);
+      grid.appendChild(div);
+    }
   }
 }
 

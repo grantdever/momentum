@@ -8,6 +8,7 @@ import {
   weekProgress,
   cumulativeStats,
   historyGrid,
+  historyWeeks,
 } from '../js/streaks.js';
 import { mergeEntries } from '../js/merge.js';
 
@@ -414,6 +415,80 @@ t('mergeEntries: inputs are not mutated', () => {
   mergeEntries(local, remote);
   assert.deepEqual(local, localSnapshot);
   assert.deepEqual(remote, remoteSnapshot);
+});
+
+// --- v1.1 additive stats -------------------------------------------------
+
+function hit(date, overrides = {}) {
+  return e(date, {
+    alcoholFree: true, cookedAtHome: true, sleptOnTime: true, workSprint: true,
+    ...overrides,
+  });
+}
+
+t('cumulativeStats: offDayCount counts off days', () => {
+  const entries = {
+    '2026-07-01': e('2026-07-01', { offDay: true }),
+    '2026-07-02': hit('2026-07-02'),
+    '2026-07-03': e('2026-07-03', { offDay: true }),
+  };
+  assert.equal(cumulativeStats(entries, 4, '2026-07-03').offDayCount, 2);
+});
+
+t('cumulativeStats: last30Hit counts threshold days in trailing 30-day window', () => {
+  const entries = {
+    '2026-07-12': hit('2026-07-12'),
+    '2026-07-10': hit('2026-07-10'),
+    '2026-07-05': e('2026-07-05'),                    // logged, below threshold
+    '2026-07-03': hit('2026-07-03', { offDay: true }), // off day never hits
+  };
+  assert.equal(cumulativeStats(entries, 4, '2026-07-12').last30Hit, 2);
+});
+
+t('cumulativeStats: last30Hit window boundary — day 29 back counts, day 30 back does not', () => {
+  const today = '2026-07-12';
+  const entries = {
+    [addDays(today, -29)]: hit(addDays(today, -29)),
+    [addDays(today, -30)]: hit(addDays(today, -30)),
+  };
+  assert.equal(cumulativeStats(entries, 4, today).last30Hit, 1);
+});
+
+t('historyWeeks: 5 weeks, Monday-aligned, oldest first, ends with current week', () => {
+  const today = '2026-07-12'; // a Sunday; week is Mon 2026-07-06 .. Sun 2026-07-12
+  const wk = historyWeeks({}, 4, today);
+  assert.equal(wk.length, 5);
+  assert.equal(wk[4].monday, '2026-07-06');
+  assert.equal(wk[0].monday, '2026-06-08');
+  for (const w of wk) {
+    assert.equal(w.days.length, 7);
+    assert.equal(w.days[0].date, w.monday);
+    assert.equal(weekStart(w.days[6].date), w.monday);
+  }
+});
+
+t('historyWeeks: future flags only after today within current week', () => {
+  const today = '2026-07-08'; // Wednesday; Thu-Sun of current week are future
+  const wk = historyWeeks({}, 4, today);
+  const current = wk[4];
+  assert.deepEqual(current.days.map((d) => d.future),
+    [false, false, false, true, true, true, true]);
+  assert.ok(wk[3].days.every((d) => !d.future));
+});
+
+t('historyWeeks: cell flags for logged/off/trained and month-boundary dates', () => {
+  const entries = {
+    '2026-06-30': hit('2026-06-30', { trained: true }),
+    '2026-07-01': e('2026-07-01', { offDay: true }),
+  };
+  const wk = historyWeeks(entries, 4, '2026-07-12');
+  const flat = wk.flatMap((w) => w.days);
+  const juneCell = flat.find((d) => d.date === '2026-06-30');
+  const julyCell = flat.find((d) => d.date === '2026-07-01');
+  assert.ok(juneCell.logged && juneCell.trained && juneCell.count === 4);
+  assert.ok(julyCell.logged && julyCell.offDay && !julyCell.trained);
+  const unlogged = flat.find((d) => d.date === '2026-07-02');
+  assert.ok(!unlogged.logged && unlogged.count === 0);
 });
 
 // --- personal data guard -------------------------------------------------

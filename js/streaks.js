@@ -111,12 +111,19 @@ export function cumulativeStats(entries, threshold, todayIso) {
   let totalLogged = 0;
   let totalCoreHit = 0;
   let totalTrained = 0;
+  let offDayCount = 0;
 
   for (const k of keys) {
     const e = entries[k];
     totalLogged++;
     if (!e.offDay && coreCount(e) >= threshold) totalCoreHit++;
     if (e.trained) totalTrained++;
+    if (e.offDay) offDayCount++;
+  }
+
+  let last30Hit = 0;
+  for (let i = 0; i < 30; i++) {
+    if (hits(entries[addDays(todayIso, -i)], threshold)) last30Hit++;
   }
 
   const earliest = earliestDate(entries);
@@ -140,7 +147,30 @@ export function cumulativeStats(entries, threshold, todayIso) {
     }
   }
 
-  return { totalLogged, totalCoreHit, totalTrained, bestStreak };
+  return { totalLogged, totalCoreHit, totalTrained, bestStreak, offDayCount, last30Hit };
+}
+
+export function historyWeeks(entries, threshold, todayIso, weeks = 5) {
+  const currentMonday = weekStart(todayIso);
+  const result = [];
+  for (let w = weeks - 1; w >= 0; w--) {
+    const monday = addDays(currentMonday, -7 * w);
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(monday, i);
+      const e = entries[d];
+      days.push({
+        date: d,
+        logged: !!e,
+        count: e ? coreCount(e) : 0,
+        offDay: !!e?.offDay,
+        trained: !!e?.trained,
+        future: d > todayIso,
+      });
+    }
+    result.push({ monday, days });
+  }
+  return result;
 }
 
 export function historyGrid(entries, threshold, todayIso, n = 30) {

@@ -25,6 +25,7 @@
         <div id="training-streak" class="training-streak">0</div>
         <div class="streak-caption">week training streak</div>
         <div id="week-dots" class="week-dots" aria-label="Training days this week"></div>
+        <div id="week-count" class="week-count"></div>
       </div>
       <div id="sync-status" class="sync-status" aria-live="polite"></div>
     </header>
@@ -39,10 +40,14 @@
       <button type="button" data-day-offset="-1" class="day-btn" aria-pressed="false">Yesterday</button>
     </div>
 
+    <div id="offday-chip" class="offday-chip" hidden>Off day — doesn't count, doesn't break</div>
+
     <div id="habit-list" class="habit-list">
+      <div id="weekly-label" class="habit-group-label">Weekly — 3×</div>
       <button type="button" class="habit-row" data-habit="trained" aria-pressed="false">
         <span class="habit-label">Trained</span>
       </button>
+      <div id="daily-label" class="habit-group-label">Daily — 4 of 5</div>
       <button type="button" class="habit-row" data-habit="alcoholFree" aria-pressed="false">
         <span class="habit-label">Alcohol-free</span>
       </button>
@@ -86,6 +91,7 @@
   <section id="view-history" class="view">
     <h2 class="view-title">History</h2>
     <div id="history-grid" class="history-grid"></div>
+    <div id="grid-detail" class="grid-detail" aria-live="polite"></div>
     <div class="history-legend">
       <span class="legend-label">Less</span>
       <span class="legend-swatch i0"></span>
