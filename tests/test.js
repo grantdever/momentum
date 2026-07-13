@@ -14,6 +14,7 @@ import {
   daySummary,
 } from '../js/streaks.js';
 import { mergeEntries } from '../js/merge.js';
+import { DEFAULT_SETTINGS } from '../js/store.js';
 
 let pass = 0;
 let fail = 0;
@@ -545,6 +546,14 @@ t('daySummary: off day reported as off with its count', () => {
 t('daySummary: unlogged day -> logged false, zeros', () => {
   const s = daySummary({}, '2026-07-11');
   assert.deepEqual(s, { logged: false, count: 0, trained: false, offDay: false });
+});
+
+// --- hold-to-complete setting ----------------------------------------------
+
+t('DEFAULT_SETTINGS: holdToComplete defaults off; existing defaults intact', () => {
+  assert.equal(DEFAULT_SETTINGS.holdToComplete, false);
+  assert.equal(DEFAULT_SETTINGS.coreThreshold, 4);
+  assert.equal(DEFAULT_SETTINGS.github.enabled, false);
 });
 
 // --- personal data guard -------------------------------------------------

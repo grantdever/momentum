@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS = {
   sleepTargetTime: '22:00',
   gymTargetPerWeek: 3,
   weekStartsOn: 'monday',
+  holdToComplete: false,
   github: { enabled: false, owner: '', repo: '', path: 'data.json', token: '' },
 };
 
