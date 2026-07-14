@@ -703,3 +703,25 @@ summary:focus-visible {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* Wide screens (desktop browsers): keep the phone-scale layout, centered as
+   a single column instead of stretched across the window. */
+@media (min-width: 700px) {
+  #app {
+    max-width: 480px;
+    margin: 0 auto;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    min-height: 100vh;
+  }
+
+  .nav {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 480px;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+}
