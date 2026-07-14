@@ -14,7 +14,8 @@ import {
   daySummary,
 } from '../js/streaks.js';
 import { mergeEntries } from '../js/merge.js';
-import { DEFAULT_SETTINGS } from '../js/store.js';
+import { DEFAULT_SETTINGS, exportString } from '../js/store.js';
+import { parseImport, countUpdated } from '../js/importer.js';
 
 let pass = 0;
 let fail = 0;
@@ -554,6 +555,88 @@ t('DEFAULT_SETTINGS: holdToComplete defaults off; existing defaults intact', () 
   assert.equal(DEFAULT_SETTINGS.holdToComplete, false);
   assert.equal(DEFAULT_SETTINGS.coreThreshold, 4);
   assert.equal(DEFAULT_SETTINGS.github.enabled, false);
+});
+
+// --- js/importer.js: parseImport -------------------------------------------
+
+t('parseImport: round-trips the shape produced by exportString', () => {
+  const entries = {
+    '2026-07-01': hitEntry('2026-07-01'),
+    '2026-07-02': e('2026-07-02', { offDay: true }),
+  };
+  const json = exportString(entries, DEFAULT_SETTINGS);
+  const result = parseImport(json);
+  assert.equal(result.error, undefined);
+  assert.equal(result.skipped, 0);
+  assert.deepEqual(result.entries, entries);
+});
+
+t('parseImport: not JSON -> calm error', () => {
+  const result = parseImport('not json at all {');
+  assert.ok(result.error);
+  assert.equal(result.entries, undefined);
+});
+
+t('parseImport: missing entries field -> error', () => {
+  const result = parseImport(JSON.stringify({ version: 1, settings: {} }));
+  assert.ok(result.error);
+});
+
+t('parseImport: entries is not an object -> error', () => {
+  const result = parseImport(JSON.stringify({ entries: 'nope' }));
+  assert.ok(result.error);
+});
+
+t('parseImport: non-object top level input -> error', () => {
+  assert.ok(parseImport(JSON.stringify([1, 2, 3])).error);
+  assert.ok(parseImport(JSON.stringify('a string')).error);
+  assert.ok(parseImport(JSON.stringify(null)).error);
+});
+
+t('parseImport: empty entries -> error', () => {
+  const result = parseImport(JSON.stringify({ entries: {} }));
+  assert.ok(result.error);
+});
+
+t('parseImport: bad date keys and non-object values are skipped and counted', () => {
+  const payload = {
+    entries: {
+      '2026-07-01': hitEntry('2026-07-01'),
+      'not-a-date': hitEntry('2026-07-02'),
+      '2026-13-40': hitEntry('2026-07-03'), // wrong shape but matches the regex is not required here
+      '2026-07-04': 'nope',
+    },
+  };
+  const result = parseImport(JSON.stringify(payload));
+  assert.equal(result.error, undefined);
+  assert.deepEqual(Object.keys(result.entries).sort(), ['2026-07-01', '2026-13-40']);
+  assert.equal(result.skipped, 2);
+});
+
+t('parseImport: settings field in the payload is ignored entirely', () => {
+  const payload = {
+    entries: { '2026-07-01': hitEntry('2026-07-01') },
+    settings: { github: { token: 'fake-test-token-value', enabled: true } },
+  };
+  const result = parseImport(JSON.stringify(payload));
+  assert.equal(result.settings, undefined);
+  assert.equal(JSON.stringify(result).includes('fake-test-token-value'), false);
+});
+
+// --- js/importer.js: countUpdated -------------------------------------------
+
+t('countUpdated: new days and changed days count; unchanged days do not', () => {
+  const before = {
+    '2026-07-01': hitEntry('2026-07-01', { note: 'old' }),
+    '2026-07-02': hitEntry('2026-07-02'),
+  };
+  const merged = {
+    '2026-07-01': hitEntry('2026-07-01', { note: 'new' }), // changed
+    '2026-07-02': hitEntry('2026-07-02'), // unchanged
+    '2026-07-03': hitEntry('2026-07-03'), // new
+  };
+  const count = countUpdated(before, merged, ['2026-07-01', '2026-07-02', '2026-07-03']);
+  assert.equal(count, 2);
 });
 
 // --- personal data guard -------------------------------------------------

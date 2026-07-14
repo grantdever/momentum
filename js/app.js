@@ -13,6 +13,7 @@ import {
 } from './store.js';
 import { daySummary } from './streaks.js';
 import { mergeEntries } from './merge.js';
+import { parseImport, countUpdated } from './importer.js';
 import { renderAll, renderSyncStatus } from './render.js';
 import {
   pull,
@@ -400,6 +401,37 @@ function init() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+  });
+
+  function setImportStatus(message) {
+    const el = document.getElementById('import-status');
+    if (el) el.textContent = message;
+  }
+
+  document.getElementById('import-btn').addEventListener('click', () => {
+    document.getElementById('import-file').click();
+  });
+
+  document.getElementById('import-file').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // reset so re-selecting the same file fires change again
+    if (!file) return;
+    const text = await file.text();
+    const result = parseImport(text);
+    if (result.error) {
+      setImportStatus(result.error);
+      return;
+    }
+    const before = state.entries;
+    const { merged } = mergeEntries(state.entries, result.entries);
+    const updated = countUpdated(before, merged, Object.keys(result.entries));
+    state.entries = merged;
+    saveEntries(state.entries);
+    renderAll(state);
+    maybeSync();
+    const total = Object.keys(result.entries).length;
+    const skippedNote = result.skipped ? `, ${result.skipped} skipped` : '';
+    setImportStatus(`Imported — ${total} days merged, ${updated} updated${skippedNote}`);
   });
 
   renderAll(state);

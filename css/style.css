@@ -662,7 +662,8 @@ summary:focus-visible {
   margin: 0 0 4px;
 }
 
-#export-btn {
+#export-btn,
+#import-btn {
   min-height: var(--tap-min);
   background: var(--accent-dim);
   border: 1px solid var(--accent);
