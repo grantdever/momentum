@@ -178,7 +178,7 @@ function init() {
     if (!ribbon) return;
     ribbon.textContent = y.offDay
       ? 'yesterday: off day'
-      : `yesterday: ${y.count}/5${y.trained ? ' · trained' : ''}`;
+      : `yesterday: ${y.count}/${y.coreTotal}${y.trained ? ' · trained' : ''}`;
     ribbon.hidden = false;
     ribbonTimer = setTimeout(hideRibbon, 8000);
   }
@@ -345,7 +345,7 @@ function init() {
 
   function readSettingsFromForm() {
     const settings = state.settings;
-    // "Core threshold" still shows/edits the concrete "N of 5" number (D3);
+    // "Core threshold" still shows/edits the concrete "N of M" number (D3);
     // convert it back to coreSlack against today's active core count. A
     // slack-based editor replaces this bridge in stage 3.
     const thresholdVal = Number(document.getElementById('set-threshold').value);

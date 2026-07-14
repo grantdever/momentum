@@ -199,9 +199,18 @@ export function daySummary(entries, habits, dateIso) {
   return {
     logged: !!e,
     count: e ? coreCount(e, habits, dateIso) : 0,
+    coreTotal: activeCoresOn(habits, dateIso).length,
     trained: !!e?.trained,
     offDay: !!e?.offDay,
   };
+}
+
+// Maps a day's core hits onto the 6-step history color ramp (i0..i5) as a
+// ratio of that day's active core count, so intensity stays meaningful when
+// the denominator isn't 5. For a 5-core config this is the identity (k -> k).
+export function intensityLevel(count, coreTotal) {
+  if (count <= 0 || coreTotal <= 0) return 0;
+  return Math.min(5, Math.max(1, Math.round((5 * count) / coreTotal)));
 }
 
 export function historyWeeks(entries, habits, todayIso, weeks = 5) {
@@ -217,6 +226,7 @@ export function historyWeeks(entries, habits, todayIso, weeks = 5) {
         date: d,
         logged: !!e,
         count: e ? coreCount(e, habits, d) : 0,
+        coreTotal: activeCoresOn(habits, d).length,
         offDay: !!e?.offDay,
         trained: !!e?.trained,
         future: d > todayIso,
@@ -237,6 +247,7 @@ export function historyGrid(entries, habits, todayIso, n = 30) {
       date: d,
       logged: !!e,
       count: e ? coreCount(e, habits, d) : 0,
+      coreTotal: activeCoresOn(habits, d).length,
       offDay: !!e?.offDay,
       trained: !!e?.trained,
     });

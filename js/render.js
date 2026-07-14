@@ -10,8 +10,9 @@ import {
   cumulativeStats,
   historyWeeks,
   habitCounts,
+  intensityLevel,
 } from './streaks.js';
-import { effectiveThreshold } from './habits.js';
+import { activeHabitsOn, activeCoresOn, effectiveThreshold } from './habits.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -61,17 +62,78 @@ export function renderSyncStatus(status, message) {
   el.textContent = message || textByStatus[status] || '';
 }
 
+function activeWeeklyHabits(habits, dateIso) {
+  return activeHabitsOn(habits, dateIso).filter((h) => h.cadence === 'weekly-quota');
+}
+
+// `trained` keeps its original copy verbatim; other weekly habits get the
+// same phrasing built from their label.
+function weeklyCaption(habit) {
+  return habit.id === 'trained' ? 'week training streak' : `week ${habit.label.toLowerCase()} streak`;
+}
+
+function weeklyDotsLabel(habit) {
+  return habit.id === 'trained' ? 'Training days this week' : `${habit.label} days this week`;
+}
+
+function buildWeeklyBlock(state, habit, todayIso) {
+  const block = document.createElement('div');
+  block.className = 'training-block';
+
+  const streakEl = document.createElement('div');
+  streakEl.className = 'training-streak';
+  streakEl.textContent = String(weeklyQuotaStreak(state.entries, habit, todayIso));
+  block.appendChild(streakEl);
+
+  const caption = document.createElement('div');
+  caption.className = 'streak-caption';
+  caption.textContent = weeklyCaption(habit);
+  block.appendChild(caption);
+
+  const progress = weeklyQuotaProgress(state.entries, habit, todayIso);
+  const dotsEl = document.createElement('div');
+  dotsEl.className = 'week-dots';
+  dotsEl.setAttribute('aria-label', weeklyDotsLabel(habit));
+  const monday = weekStart(todayIso);
+  for (let i = 0; i < 7; i++) {
+    const dayIso = addDays(monday, i);
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    if (progress.days[i]) dot.classList.add('hit');
+    if (dayIso === todayIso) dot.classList.add('today');
+    dot.title = `${WEEKDAY_LABELS[i]}${progress.days[i] ? ` — ${habit.label.toLowerCase()}` : ''}`;
+    dotsEl.appendChild(dot);
+  }
+  block.appendChild(dotsEl);
+
+  const countEl = document.createElement('div');
+  countEl.className = 'week-count';
+  const target = habit.weeklyTarget;
+  const remaining = target - progress.count;
+  // "To-go" framing once past halfway pulls harder late in the week.
+  countEl.textContent =
+    remaining > 0 && progress.count >= Math.ceil(target / 2)
+      ? `${remaining} to go`
+      : `${progress.count}/${target} this week`;
+  block.appendChild(countEl);
+
+  return block;
+}
+
 function renderStreakBlock(state, todayIso) {
   const streakEl = document.getElementById('streak-number');
-  const trainingEl = document.getElementById('training-streak');
-  const dotsEl = document.getElementById('week-dots');
-  if (!streakEl || !trainingEl || !dotsEl) return;
+  const header = document.querySelector('.today-header');
+  if (!streakEl || !header) return;
 
   const { habits, coreSlack } = state.settings;
   const streak = dailyStreak(state.entries, habits, coreSlack, todayIso);
   const stats = cumulativeStats(state.entries, habits, coreSlack, todayIso);
 
-  const captionEl = streakEl.parentElement?.querySelector('.streak-caption');
+  // Zero active cores today: the daily streak card is hidden entirely [R1].
+  const dailyCard = streakEl.parentElement;
+  if (dailyCard) dailyCard.hidden = effectiveThreshold(habits, coreSlack, todayIso) === null;
+
+  const captionEl = dailyCard?.querySelector('.streak-caption');
   streakEl.textContent = String(streak);
   if (captionEl) {
     // Achievement framing on a broken chain: pair day 1 with the stats that
@@ -82,36 +144,90 @@ function renderStreakBlock(state, todayIso) {
         : 'day core streak';
   }
 
-  const trainedHabit = habits.find((h) => h.id === 'trained');
-  const trainingStreak = weeklyQuotaStreak(state.entries, trainedHabit, todayIso);
-  trainingEl.textContent = String(trainingStreak);
+  // One block per weekly-quota habit active today, in config order.
+  const syncEl = document.getElementById('sync-status');
+  for (const el of header.querySelectorAll('.training-block')) el.remove();
+  for (const habit of activeWeeklyHabits(habits, todayIso)) {
+    header.insertBefore(buildWeeklyBlock(state, habit, todayIso), syncEl);
+  }
+}
 
-  const progress = weeklyQuotaProgress(state.entries, trainedHabit, todayIso);
-  dotsEl.innerHTML = '';
-  const monday = weekStart(todayIso);
-  for (let i = 0; i < 7; i++) {
-    const dayIso = addDays(monday, i);
-    const dot = document.createElement('span');
-    dot.className = 'dot';
-    if (progress.days[i]) dot.classList.add('hit');
-    if (dayIso === todayIso) dot.classList.add('today');
-    dot.title = `${WEEKDAY_LABELS[i]}${progress.days[i] ? ' — trained' : ''}`;
-    dotsEl.appendChild(dot);
+// The sleep habit's row displays the concrete target time rather than its
+// bare label — same behavior the old hardcoded row had.
+function rowLabel(habit, settings) {
+  if (habit.id === 'sleptOnTime') {
+    return `Asleep by ${formatTime12h(settings.sleepTargetTime)} (last night)`;
+  }
+  return habit.label;
+}
+
+function buildGroupLabel(text) {
+  const div = document.createElement('div');
+  div.className = 'habit-group-label';
+  div.textContent = text;
+  return div;
+}
+
+function buildHabitRow(habit, settings) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = habit.cadence === 'bonus' ? 'habit-row bonus-row' : 'habit-row';
+  btn.dataset.habit = habit.id;
+  btn.setAttribute('aria-pressed', 'false');
+  const span = document.createElement('span');
+  span.className = 'habit-label';
+  span.textContent = rowLabel(habit, settings);
+  btn.appendChild(span);
+  return btn;
+}
+
+// Rebuild the row DOM only when the config-derived structure actually
+// changed; day-to-day renders just flip aria-pressed on stable buttons, so
+// focus and press state survive like they did with the hardcoded markup.
+let habitStructureSig = null;
+
+function syncHabitStructure(state, todayIso) {
+  const habitList = document.getElementById('habit-list');
+  const bonusSection = document.getElementById('bonus-section');
+  if (!habitList || !bonusSection) return;
+
+  const settings = state.settings;
+  const active = activeHabitsOn(settings.habits, todayIso);
+  const weekly = active.filter((h) => h.cadence === 'weekly-quota');
+  const cores = active.filter((h) => h.cadence === 'daily-core');
+  const bonus = active.filter((h) => h.cadence === 'bonus');
+  const threshold = effectiveThreshold(settings.habits, settings.coreSlack, todayIso);
+
+  const sig = JSON.stringify([
+    weekly.map((h) => [h.id, rowLabel(h, settings), h.weeklyTarget]),
+    cores.map((h) => [h.id, rowLabel(h, settings)]),
+    bonus.map((h) => [h.id, rowLabel(h, settings)]),
+    threshold,
+  ]);
+  if (sig === habitStructureSig) return;
+  habitStructureSig = sig;
+
+  habitList.innerHTML = '';
+  for (const habit of weekly) {
+    habitList.appendChild(buildGroupLabel(`Weekly — ${habit.weeklyTarget}×`));
+    habitList.appendChild(buildHabitRow(habit, settings));
+  }
+  if (cores.length > 0) {
+    habitList.appendChild(buildGroupLabel(`Daily — ${threshold} of ${cores.length}`));
+    for (const habit of cores) {
+      habitList.appendChild(buildHabitRow(habit, settings));
+    }
   }
 
-  const countEl = document.getElementById('week-count');
-  if (countEl) {
-    const target = trainedHabit.weeklyTarget;
-    const remaining = target - progress.count;
-    // "To-go" framing once past halfway pulls harder late in the week.
-    countEl.textContent =
-      remaining > 0 && progress.count >= Math.ceil(target / 2)
-        ? `${remaining} to go`
-        : `${progress.count}/${target} this week`;
+  bonusSection.innerHTML = '';
+  for (const habit of bonus) {
+    bonusSection.appendChild(buildHabitRow(habit, settings));
   }
 }
 
 function renderHabitRows(state, todayIso) {
+  syncHabitStructure(state, todayIso);
+
   const entry = state.entries[state.activeDate];
   const habitList = document.getElementById('habit-list');
   const bonusSection = document.getElementById('bonus-section');
@@ -125,23 +241,6 @@ function renderHabitRows(state, todayIso) {
     for (const btn of bonusSection.querySelectorAll('[data-habit]')) {
       setPressed(btn, !!entry?.[btn.dataset.habit]);
     }
-  }
-
-  const sleepLabel = document.getElementById('sleep-label');
-  if (sleepLabel) {
-    sleepLabel.textContent = `Asleep by ${formatTime12h(state.settings.sleepTargetTime)} (last night)`;
-  }
-
-  const trainedHabit = state.settings.habits.find((h) => h.id === 'trained');
-  const weeklyLabel = document.getElementById('weekly-label');
-  if (weeklyLabel) weeklyLabel.textContent = `Weekly — ${trainedHabit.weeklyTarget}×`;
-  const dailyLabel = document.getElementById('daily-label');
-  if (dailyLabel) {
-    const threshold = effectiveThreshold(state.settings.habits, state.settings.coreSlack, todayIso);
-    // threshold is null only when zero cores are active today [R1]; adaptive
-    // display / hiding the card entirely is stage 3 — this is a minimal,
-    // non-crashing fallback until then.
-    dailyLabel.textContent = threshold === null ? 'Daily —' : `Daily — ${threshold} of 5`;
   }
 
   const offdayChip = document.getElementById('offday-chip');
@@ -169,12 +268,19 @@ function renderDaySelector(state, todayIso) {
 function renderCumulativeStats(state, todayIso) {
   const el = document.getElementById('cumulative-stats');
   if (!el) return;
-  const stats = cumulativeStats(state.entries, state.settings.habits, state.settings.coreSlack, todayIso);
+  const { habits, coreSlack } = state.settings;
+  const stats = cumulativeStats(state.entries, habits, coreSlack, todayIso);
+  const counts = habitCounts(state.entries, habits);
   el.innerHTML = '';
   const items = [
     { value: stats.totalLogged, label: 'Days logged' },
     { value: stats.totalCoreHit, label: 'Core-threshold days' },
-    { value: stats.totalTrained, label: 'Days trained' },
+    // One "Days X" stat per weekly-quota habit active today, in config order
+    // (the default config's single `trained` renders as "Days trained").
+    ...activeWeeklyHabits(habits, todayIso).map((h) => ({
+      value: counts[h.id],
+      label: `Days ${h.label.toLowerCase()}`,
+    })),
     { value: stats.bestStreak, label: 'Best streak' },
     { value: stats.offDayCount, label: 'Off days' },
     { value: `${stats.last30Hit}/30`, label: 'Last 30 days' },
@@ -227,12 +333,12 @@ export function renderHistory(state) {
         grid.appendChild(div);
         continue;
       }
-      const intensity = cell.logged ? Math.min(cell.count, 5) : 0;
+      const intensity = cell.logged ? intensityLevel(cell.count, cell.coreTotal) : 0;
       div.className = `cell i${intensity}`;
       if (cell.offDay) div.classList.add('off');
       if (cell.trained) div.classList.add('trained');
       const parts = [
-        cell.logged ? `${cell.count} of 5` : 'not logged',
+        cell.logged ? `${cell.count} of ${cell.coreTotal}` : 'not logged',
         cell.offDay ? 'off day' : '',
         cell.trained ? 'trained' : '',
       ].filter(Boolean);
@@ -286,14 +392,20 @@ export function renderSettingsForm(state) {
 
   const holdEl = document.getElementById('set-hold');
   if (holdEl) holdEl.checked = !!settings.holdToComplete;
-  if (thresholdEl && document.activeElement !== thresholdEl) {
-    // This field still shows/edits the concrete "N of 5" number; under the
-    // hood it maps to coreSlack via today's active core count (D3). The
-    // slack-based editor is stage 3.
-    thresholdEl.value = effectiveThreshold(settings.habits, settings.coreSlack, todayIso);
+  // This field still shows/edits the concrete "N of M" number; under the
+  // hood it maps to coreSlack via today's active core count (D3). The
+  // slack-based editor is stage 3.
+  const coreTotal = activeCoresOn(settings.habits, todayIso).length;
+  const thresholdLabelEl = document.querySelector('label[for="set-threshold"]');
+  if (thresholdLabelEl) thresholdLabelEl.textContent = `Core threshold (of ${coreTotal} daily habits)`;
+  if (thresholdEl) {
+    thresholdEl.max = Math.max(1, coreTotal);
+    if (document.activeElement !== thresholdEl) {
+      thresholdEl.value = effectiveThreshold(settings.habits, settings.coreSlack, todayIso) ?? '';
+    }
   }
   if (sleepEl && document.activeElement !== sleepEl) sleepEl.value = settings.sleepTargetTime;
-  if (gymEl && document.activeElement !== gymEl) gymEl.value = trainedHabit.weeklyTarget;
+  if (gymEl && trainedHabit && document.activeElement !== gymEl) gymEl.value = trainedHabit.weeklyTarget;
   if (ghEnabledEl) ghEnabledEl.checked = !!settings.github.enabled;
   if (ghOwnerEl && document.activeElement !== ghOwnerEl) ghOwnerEl.value = settings.github.owner || '';
   if (ghRepoEl && document.activeElement !== ghRepoEl) ghRepoEl.value = settings.github.repo || '';

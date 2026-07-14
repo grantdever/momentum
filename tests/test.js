@@ -10,6 +10,7 @@ import {
   historyWeeks,
   habitCounts,
   daySummary,
+  intensityLevel,
 } from '../js/streaks.js';
 import {
   defaultHabits,
@@ -778,7 +779,7 @@ t('daySummary: logged day reports count, trained, offDay', () => {
     '2026-07-11': hitEntry('2026-07-11', { trained: true }),
   };
   const s = daySummary(entries, freshHabits(), '2026-07-11');
-  assert.deepEqual(s, { logged: true, count: 5, trained: true, offDay: false });
+  assert.deepEqual(s, { logged: true, count: 5, coreTotal: 5, trained: true, offDay: false });
 });
 
 t('daySummary: off day reported as off with its count', () => {
@@ -792,7 +793,56 @@ t('daySummary: off day reported as off with its count', () => {
 
 t('daySummary: unlogged day -> logged false, zeros', () => {
   const s = daySummary({}, freshHabits(), '2026-07-11');
-  assert.deepEqual(s, { logged: false, count: 0, trained: false, offDay: false });
+  assert.deepEqual(s, { logged: false, count: 0, coreTotal: 5, trained: false, offDay: false });
+});
+
+// --- stage 2: day-scoped denominators and intensity ratios ------------------
+
+t('daySummary: coreTotal reflects that day\'s active cores, not the config size', () => {
+  const habits = freshHabits().map((h) => (h.id === 'walked' ? archiveHabit(h, '2026-07-10') : h));
+  assert.equal(daySummary({}, habits, '2026-07-09').coreTotal, 5);
+  assert.equal(daySummary({}, habits, '2026-07-10').coreTotal, 4);
+});
+
+t('intensityLevel: identity on the default 5-core config', () => {
+  for (let k = 0; k <= 5; k++) {
+    assert.equal(intensityLevel(k, 5), k);
+  }
+});
+
+t('intensityLevel: scales counts onto the 6-step ramp for non-5 core totals', () => {
+  // 3 cores: 0, ~2, ~3, 5 — full hit always lands on the top color.
+  assert.equal(intensityLevel(0, 3), 0);
+  assert.equal(intensityLevel(1, 3), 2);
+  assert.equal(intensityLevel(2, 3), 3);
+  assert.equal(intensityLevel(3, 3), 5);
+  // 8 cores: any nonzero count shows at least i1.
+  assert.equal(intensityLevel(1, 8), 1);
+  assert.equal(intensityLevel(4, 8), 3);
+  assert.equal(intensityLevel(8, 8), 5);
+});
+
+t('intensityLevel: zero core total or zero count -> 0; never exceeds 5', () => {
+  assert.equal(intensityLevel(0, 5), 0);
+  assert.equal(intensityLevel(3, 0), 0);
+  assert.equal(intensityLevel(7, 5), 5);
+});
+
+t('historyGrid: cells carry that day\'s coreTotal across an archive boundary', () => {
+  const habits = freshHabits().map((h) => (h.id === 'walked' ? archiveHabit(h, '2026-07-11') : h));
+  const grid = historyGrid({}, habits, '2026-07-12', 4);
+  const byDate = Object.fromEntries(grid.map((c) => [c.date, c.coreTotal]));
+  assert.equal(byDate['2026-07-09'], 5);
+  assert.equal(byDate['2026-07-10'], 5);
+  assert.equal(byDate['2026-07-11'], 4); // `to` is exclusive: archived from this day on
+  assert.equal(byDate['2026-07-12'], 4);
+});
+
+t('historyWeeks: cells carry coreTotal (default config -> 5 everywhere)', () => {
+  const wk = historyWeeks({}, freshHabits(), '2026-07-12');
+  for (const w of wk) {
+    for (const d of w.days) assert.equal(d.coreTotal, 5);
+  }
 });
 
 // --- settings v2 defaults ----------------------------------------------
