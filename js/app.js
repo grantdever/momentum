@@ -1,7 +1,7 @@
 // Bootstrap and event wiring for Momentum. localStorage is the source of
 // truth for the working session; GitHub sync (if enabled) layers on top.
 
-import { todayISO, addDays } from './dates.js';
+import { todayISO, addDays, WEEK_STARTS } from './dates.js';
 import {
   loadEntries,
   saveEntries,
@@ -355,6 +355,8 @@ function init() {
     const settings = state.settings;
     const sleepVal = document.getElementById('set-sleep').value;
     if (sleepVal) settings.sleepTargetTime = sleepVal;
+    const weekStartVal = document.getElementById('set-weekstart').value;
+    if (WEEK_STARTS.includes(weekStartVal)) settings.weekStartsOn = weekStartVal;
     settings.github.enabled = document.getElementById('gh-enabled').checked;
     settings.github.owner = document.getElementById('gh-owner').value.trim();
     settings.github.repo = document.getElementById('gh-repo').value.trim();

@@ -80,10 +80,10 @@ function laterDate(a, b) {
   return a > b ? a : b;
 }
 
-function habitCountInWeek(entries, habit, monday) {
+function habitCountInWeek(entries, habit, start) {
   let count = 0;
   for (let i = 0; i < 7; i++) {
-    const d = addDays(monday, i);
+    const d = addDays(start, i);
     if (entries[d]?.[habit.id] === true) count++;
   }
   return count;
@@ -93,11 +93,11 @@ function habitCountInWeek(entries, habit, monday) {
 // Bounded at the later of the earliest entry and the habit's first `from`
 // date [R9] — otherwise a habit added mid-history would walk back into weeks
 // before it existed and report a broken streak on day one.
-export function weeklyQuotaStreak(entries, habit, todayIso) {
+export function weeklyQuotaStreak(entries, habit, todayIso, weekStartsOn = 'monday') {
   const target = habit.weeklyTarget;
   let streak = 0;
 
-  let w = weekStart(todayIso);
+  let w = weekStart(todayIso, weekStartsOn);
   if (habitCountInWeek(entries, habit, w) >= target) {
     streak += 1;
   }
@@ -109,7 +109,7 @@ export function weeklyQuotaStreak(entries, habit, todayIso) {
 
   const habitFrom = habitFirstFrom(habit);
   const lowerBound = habitFrom === null ? earliest : laterDate(earliest, habitFrom);
-  const boundWeek = weekStart(lowerBound);
+  const boundWeek = weekStart(lowerBound, weekStartsOn);
 
   w = addDays(w, -7);
   while (w >= boundWeek) {
@@ -124,12 +124,12 @@ export function weeklyQuotaStreak(entries, habit, todayIso) {
   return streak;
 }
 
-export function weeklyQuotaProgress(entries, habit, todayIso) {
-  const monday = weekStart(todayIso);
+export function weeklyQuotaProgress(entries, habit, todayIso, weekStartsOn = 'monday') {
+  const start = weekStart(todayIso, weekStartsOn);
   const days = [];
   let count = 0;
   for (let i = 0; i < 7; i++) {
-    const d = addDays(monday, i);
+    const d = addDays(start, i);
     const hit = entries[d]?.[habit.id] === true;
     if (hit) count++;
     days.push(hit);
@@ -224,14 +224,14 @@ export function intensityLevel(count, coreTotal) {
   return Math.min(5, Math.max(1, Math.round((5 * count) / coreTotal)));
 }
 
-export function historyWeeks(entries, habits, todayIso, weeks = 5) {
-  const currentMonday = weekStart(todayIso);
+export function historyWeeks(entries, habits, todayIso, weeks = 5, weekStartsOn = 'monday') {
+  const currentStart = weekStart(todayIso, weekStartsOn);
   const result = [];
   for (let w = weeks - 1; w >= 0; w--) {
-    const monday = addDays(currentMonday, -7 * w);
+    const start = addDays(currentStart, -7 * w);
     const days = [];
     for (let i = 0; i < 7; i++) {
-      const d = addDays(monday, i);
+      const d = addDays(start, i);
       const e = entries[d];
       days.push({
         date: d,
@@ -243,7 +243,7 @@ export function historyWeeks(entries, habits, todayIso, weeks = 5) {
         future: d > todayIso,
       });
     }
-    result.push({ monday, days });
+    result.push({ start, days });
   }
   return result;
 }

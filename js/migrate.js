@@ -1,9 +1,10 @@
 // Settings migration: v1 (flat, unversioned) -> v2 (schemaVersion, habits[],
 // coreSlack). Pure, total, and idempotent — see schema-design.md D6.
 
+import { WEEK_STARTS } from './dates.js';
 import { defaultHabits, LEGACY_CORE_HABITS, clampSlack, clampWeeklyTarget } from './habits.js';
 
-const ALLOWED_WEEK_STARTS = ['monday', 'sunday', 'saturday'];
+const ALLOWED_WEEK_STARTS = WEEK_STARTS;
 const ALLOWED_CADENCES = ['daily-core', 'weekly-quota', 'bonus'];
 
 // Keys this module understands on a v1 (or v2) raw settings object. Anything

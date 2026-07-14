@@ -713,12 +713,12 @@ t('historyWeeks: 5 weeks, Monday-aligned, oldest first, ends with current week',
   const today = '2026-07-12'; // a Sunday; week is Mon 2026-07-06 .. Sun 2026-07-12
   const wk = historyWeeks({}, freshHabits(), today);
   assert.equal(wk.length, 5);
-  assert.equal(wk[4].monday, '2026-07-06');
-  assert.equal(wk[0].monday, '2026-06-08');
+  assert.equal(wk[4].start, '2026-07-06');
+  assert.equal(wk[0].start, '2026-06-08');
   for (const w of wk) {
     assert.equal(w.days.length, 7);
-    assert.equal(w.days[0].date, w.monday);
-    assert.equal(weekStart(w.days[6].date), w.monday);
+    assert.equal(w.days[0].date, w.start);
+    assert.equal(weekStart(w.days[6].date), w.start);
   }
 });
 
@@ -940,6 +940,66 @@ t('weeklyDoneOn: a weekly habit archived before that day no longer marks it', ()
   const habits = freshHabits().map((h) => (h.id === 'trained' ? archiveHabit(h, '2026-07-10') : h));
   assert.equal(weeklyDoneOn(e('2026-07-09', { trained: true }), habits, '2026-07-09'), true);
   assert.equal(weeklyDoneOn(e('2026-07-10', { trained: true }), habits, '2026-07-10'), false);
+});
+
+// --- stage 4: weekStartsOn -----------------------------------------------
+// 2026-07-06 is a Monday, 2026-07-11 a Saturday, 2026-07-12 a Sunday.
+
+t('weekStart: sunday start — Sunday is its own week start, Mon..Sat map back to it', () => {
+  assert.equal(weekStart('2026-07-12', 'sunday'), '2026-07-12');
+  assert.equal(weekStart('2026-07-06', 'sunday'), '2026-07-05'); // Mon -> previous Sun
+  assert.equal(weekStart('2026-07-11', 'sunday'), '2026-07-05'); // Sat -> previous Sun
+});
+
+t('weekStart: saturday start — Saturday is its own week start, Sun..Fri map back to it', () => {
+  assert.equal(weekStart('2026-07-11', 'saturday'), '2026-07-11');
+  assert.equal(weekStart('2026-07-12', 'saturday'), '2026-07-11'); // Sun -> Sat before it
+  assert.equal(weekStart('2026-07-10', 'saturday'), '2026-07-04'); // Fri -> previous Sat
+});
+
+t('weekStart: year and month boundaries for all three starts', () => {
+  // 2026-01-01 is a Thursday.
+  assert.equal(weekStart('2026-01-01', 'monday'), '2025-12-29');
+  assert.equal(weekStart('2026-01-01', 'sunday'), '2025-12-28');
+  assert.equal(weekStart('2026-01-01', 'saturday'), '2025-12-27');
+  // 2026-08-01 is a Saturday.
+  assert.equal(weekStart('2026-08-01', 'monday'), '2026-07-27');
+  assert.equal(weekStart('2026-08-01', 'sunday'), '2026-07-26');
+  assert.equal(weekStart('2026-08-01', 'saturday'), '2026-08-01');
+});
+
+t('weekStart: omitted or unknown weekStartsOn falls back to monday', () => {
+  assert.equal(weekStart('2026-07-12'), '2026-07-06');
+  assert.equal(weekStart('2026-07-12', 'banana'), '2026-07-06');
+});
+
+t('weeklyQuotaStreak: the week boundary shift changes bucketing (Sunday case)', () => {
+  const entries = {
+    '2026-07-12': e('2026-07-12', { trained: true }), // Sunday
+    '2026-07-06': e('2026-07-06', { trained: true }), // Monday
+    '2026-07-07': e('2026-07-07', { trained: true }), // Tuesday
+    '2026-07-13': e('2026-07-13', { trained: true }), // next Monday
+  };
+  const habit = trainedHabit(freshHabits());
+  // Monday weeks: 07-06..07-12 holds Mon+Tue+Sun = 3/3 -> streak 1.
+  assert.equal(weeklyQuotaStreak(entries, habit, '2026-07-12', 'monday'), 1);
+  // Sunday weeks: current week 07-12..07-18 has Sun+Mon = 2/3 in progress (no
+  // credit yet), and the completed week 07-05..07-11 had only 2/3 -> streak 0.
+  assert.equal(weeklyQuotaStreak(entries, habit, '2026-07-12', 'sunday'), 0);
+});
+
+t('historyWeeks: week columns re-bucket under a different start day', () => {
+  const today = '2026-07-12'; // Sunday
+  const sundayWeeks = historyWeeks({}, freshHabits(), today, 5, 'sunday');
+  assert.equal(sundayWeeks[4].start, '2026-07-12'); // today opens the current week
+  assert.deepEqual(sundayWeeks[4].days.map((d) => d.future),
+    [false, true, true, true, true, true, true]);
+  const saturdayWeeks = historyWeeks({}, freshHabits(), today, 5, 'saturday');
+  assert.equal(saturdayWeeks[4].start, '2026-07-11');
+  for (const w of [...sundayWeeks, ...saturdayWeeks]) {
+    assert.equal(w.days.length, 7);
+    assert.equal(w.days[0].date, w.start);
+  }
 });
 
 // --- settings v2 defaults ----------------------------------------------

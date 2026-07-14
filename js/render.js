@@ -23,6 +23,13 @@ function monthDay(iso) {
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+// Labels rotated so index 0 is the configured first day of the week.
+function weekdayLabels(weekStartsOn) {
+  const shift = { monday: 0, sunday: 6, saturday: 5 }[weekStartsOn] ?? 0;
+  if (shift === 0) return WEEKDAY_LABELS;
+  return [...WEEKDAY_LABELS.slice(shift), ...WEEKDAY_LABELS.slice(0, shift)];
+}
+
 function formatTime12h(hhmm) {
   const parts = String(hhmm || '22:00').split(':');
   let h = Number(parts[0]);
@@ -77,12 +84,13 @@ function weeklyDotsLabel(habit) {
 }
 
 function buildWeeklyBlock(state, habit, todayIso) {
+  const weekStartsOn = state.settings.weekStartsOn;
   const block = document.createElement('div');
   block.className = 'training-block';
 
   const streakEl = document.createElement('div');
   streakEl.className = 'training-streak';
-  streakEl.textContent = String(weeklyQuotaStreak(state.entries, habit, todayIso));
+  streakEl.textContent = String(weeklyQuotaStreak(state.entries, habit, todayIso, weekStartsOn));
   block.appendChild(streakEl);
 
   const caption = document.createElement('div');
@@ -90,18 +98,19 @@ function buildWeeklyBlock(state, habit, todayIso) {
   caption.textContent = weeklyCaption(habit);
   block.appendChild(caption);
 
-  const progress = weeklyQuotaProgress(state.entries, habit, todayIso);
+  const progress = weeklyQuotaProgress(state.entries, habit, todayIso, weekStartsOn);
   const dotsEl = document.createElement('div');
   dotsEl.className = 'week-dots';
   dotsEl.setAttribute('aria-label', weeklyDotsLabel(habit));
-  const monday = weekStart(todayIso);
+  const labels = weekdayLabels(weekStartsOn);
+  const start = weekStart(todayIso, weekStartsOn);
   for (let i = 0; i < 7; i++) {
-    const dayIso = addDays(monday, i);
+    const dayIso = addDays(start, i);
     const dot = document.createElement('span');
     dot.className = 'dot';
     if (progress.days[i]) dot.classList.add('hit');
     if (dayIso === todayIso) dot.classList.add('today');
-    dot.title = `${WEEKDAY_LABELS[i]}${progress.days[i] ? ` — ${habit.label.toLowerCase()}` : ''}`;
+    dot.title = `${labels[i]}${progress.days[i] ? ` — ${habit.label.toLowerCase()}` : ''}`;
     dotsEl.appendChild(dot);
   }
   block.appendChild(dotsEl);
@@ -320,7 +329,8 @@ export function renderHistory(state) {
   const grid = document.getElementById('history-grid');
   if (!grid) return;
   const todayIso = todayISO();
-  const weeks = historyWeeks(state.entries, state.settings.habits, todayIso);
+  const weekStartsOn = state.settings.weekStartsOn;
+  const weeks = historyWeeks(state.entries, state.settings.habits, todayIso, 5, weekStartsOn);
   grid.innerHTML = '';
 
   const markerLabel = weeklyMarkerLabel(state.settings.habits, todayIso);
@@ -335,8 +345,8 @@ export function renderHistory(state) {
   }
 
   // Column-major grid: first column is weekday labels, then one column per
-  // week (Mon..Sun top to bottom), so weekly rhythm reads across a row.
-  for (const label of WEEKDAY_LABELS) {
+  // week (first weekday at the top), so weekly rhythm reads across a row.
+  for (const label of weekdayLabels(weekStartsOn)) {
     const div = document.createElement('div');
     div.className = 'wd-label';
     div.textContent = label[0];
@@ -562,6 +572,8 @@ export function renderSettingsForm(state) {
   const holdEl = document.getElementById('set-hold');
   if (holdEl) holdEl.checked = !!settings.holdToComplete;
   if (sleepEl && document.activeElement !== sleepEl) sleepEl.value = settings.sleepTargetTime;
+  const weekStartEl = document.getElementById('set-weekstart');
+  if (weekStartEl && document.activeElement !== weekStartEl) weekStartEl.value = settings.weekStartsOn;
   if (ghEnabledEl) ghEnabledEl.checked = !!settings.github.enabled;
   if (ghOwnerEl && document.activeElement !== ghOwnerEl) ghOwnerEl.value = settings.github.owner || '';
   if (ghRepoEl && document.activeElement !== ghRepoEl) ghRepoEl.value = settings.github.repo || '';
