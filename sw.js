@@ -12,6 +12,7 @@ const ASSETS = [
   './js/dates.js',
   './js/streaks.js',
   './js/merge.js',
+  './js/importer.js',
   './js/sync.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
