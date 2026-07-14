@@ -13,6 +13,8 @@ const ASSETS = [
   './js/streaks.js',
   './js/merge.js',
   './js/importer.js',
+  './js/habits.js',
+  './js/migrate.js',
   './js/sync.js',
   './icons/icon-192.png',
   './icons/icon-512.png',

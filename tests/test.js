@@ -314,6 +314,13 @@ t('migrateSettings: idempotent on v2 input', () => {
   assert.deepEqual(second.settings, first.settings);
 });
 
+t('migrateSettings: habits with reserved-key ids are rejected in validation [R4]', () => {
+  const good = { id: 'coldPlunge', label: 'Cold plunge', cadence: 'daily-core', active: [{ from: null, to: null }] };
+  const bad = { id: 'date', label: 'Sneaky', cadence: 'daily-core', active: [{ from: null, to: null }] };
+  const { settings } = migrateSettings({ schemaVersion: 2, habits: [good, bad], coreSlack: 0 });
+  assert.deepEqual(settings.habits.map((h) => h.id), ['coldPlunge']);
+});
+
 t('migrateSettings: garbage (non-object) input falls back to total defaults', () => {
   const { settings, migrated } = migrateSettings('banana');
   assert.equal(migrated, true);

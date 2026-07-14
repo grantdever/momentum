@@ -2,7 +2,7 @@
 // coreSlack). Pure, total, and idempotent — see schema-design.md D6.
 
 import { WEEK_STARTS } from './dates.js';
-import { defaultHabits, LEGACY_CORE_HABITS, clampSlack, clampWeeklyTarget } from './habits.js';
+import { defaultHabits, LEGACY_CORE_HABITS, RESERVED_KEYS, clampSlack, clampWeeklyTarget } from './habits.js';
 
 const ALLOWED_WEEK_STARTS = WEEK_STARTS;
 const ALLOWED_CADENCES = ['daily-core', 'weekly-quota', 'bonus'];
@@ -83,6 +83,9 @@ function validateInterval(iv) {
 function validateHabit(h) {
   if (!isPlainObject(h)) return null;
   if (typeof h.id !== 'string' || !h.id) return null;
+  // Reserved entry keys must be refused here too, not only in generateHabitId —
+  // a habit id like 'date' would let createEmptyEntry overwrite entry fields.
+  if (RESERVED_KEYS.includes(h.id)) return null;
   if (typeof h.label !== 'string' || !h.label) return null;
   if (!ALLOWED_CADENCES.includes(h.cadence)) return null;
 
