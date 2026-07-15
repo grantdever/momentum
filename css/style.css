@@ -682,25 +682,31 @@ summary:focus-visible {
 }
 
 .editor-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
   background: var(--bg-row);
   border: 1px solid var(--border);
   border-radius: 10px;
+  padding: 4px;
 }
 
-.editor-row summary {
+.editor-row-open {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 48px;
-  padding: 0 14px;
+  min-height: 44px;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  text-align: left;
   cursor: pointer;
-  list-style: none;
-  -webkit-user-select: none;
-  user-select: none;
 }
 
-.editor-row summary::-webkit-details-marker {
-  display: none;
+.editor-row-open:active {
+  background: var(--bg-raised);
 }
 
 .editor-row-name {
@@ -715,27 +721,22 @@ summary:focus-visible {
   color: var(--text-dim);
 }
 
-.editor-row-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0 14px 12px;
-}
-
-.editor-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
+.editor-row-move {
+  width: 44px;
+  min-height: 44px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
-.editor-actions {
-  display: flex;
-  gap: 8px;
+.editor-row-move:active {
+  background: var(--bg-raised);
+  color: var(--text);
 }
 
-.editor-actions button,
 .archived-row button {
   min-height: 44px;
   padding: 0 14px;
@@ -746,8 +747,39 @@ summary:focus-visible {
   cursor: pointer;
 }
 
-.editor-actions button[data-action="archive"] {
+/* ---------- Habit create/edit screen ---------- */
+
+.screen-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.screen-actions button {
   flex: 1;
+  min-height: var(--tap-min);
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#habit-screen-save {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+#habit-screen-archive,
+#habit-screen-remove {
+  min-height: var(--tap-min);
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .editor-subsection summary {
@@ -793,7 +825,8 @@ summary:focus-visible {
 }
 
 #export-btn,
-#import-btn {
+#import-btn,
+#new-habit-btn {
   min-height: var(--tap-min);
   background: var(--accent-dim);
   border: 1px solid var(--accent);

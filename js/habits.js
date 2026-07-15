@@ -66,6 +66,13 @@ export function unarchiveHabit(habit, dateIso) {
   return { ...habit, active: [...habit.active, { from: dateIso, to: null }] };
 }
 
+// Delete a habit from the config. Callers must only offer this while the
+// habit has no logged history (see habitHasHistory in streaks.js) — with
+// history, archive is the only path. Config-only: entries are never touched.
+export function removeHabit(habits, id) {
+  return habits.filter((h) => h.id !== id);
+}
+
 // Editor/validation clamps. Both return null for non-numeric garbage so
 // callers can fall back to their own default; finite values are treated as
 // intent and clamped into range.

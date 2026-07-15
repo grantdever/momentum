@@ -205,6 +205,16 @@ export function daySummary(entries, habits, dateIso) {
   };
 }
 
+// True when any entry marks the habit done. Entries stamped `false` by
+// createEmptyEntry (the habit existed that day but was never completed) are
+// NOT history — only a true value is. Gates the editor's Remove action.
+export function habitHasHistory(entries, habitId) {
+  for (const k of Object.keys(entries)) {
+    if (entries[k][habitId] === true) return true;
+  }
+  return false;
+}
+
 // True when any weekly-quota habit active on that day was done — drives the
 // history dot marker. With the default single `trained` habit this reduces
 // exactly to the old entry.trained check.

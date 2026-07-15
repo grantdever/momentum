@@ -11,6 +11,7 @@ import {
   historyWeeks,
   habitCounts,
   intensityLevel,
+  habitHasHistory,
 } from './streaks.js';
 import { activeHabitsOn, activeCoresOn, effectiveThreshold } from './habits.js';
 
@@ -412,74 +413,40 @@ const CADENCE_TAGS = {
   bonus: 'bonus',
 };
 
-function buildEditorRow(habit, openIds) {
-  const row = document.createElement('details');
+// Read-mostly row: tapping the main area opens the habit screen; only the
+// reorder arrows act in place.
+function buildEditorRow(habit) {
+  const row = document.createElement('div');
   row.className = 'editor-row';
   row.dataset.habitId = habit.id;
-  if (openIds.has(habit.id)) row.open = true;
 
-  const summary = document.createElement('summary');
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'editor-row-open';
+  open.dataset.action = 'edit';
   const name = document.createElement('span');
   name.className = 'editor-row-name';
   name.textContent = habit.label;
   const tag = document.createElement('span');
   tag.className = 'editor-row-tag';
   tag.textContent = CADENCE_TAGS[habit.cadence];
-  summary.appendChild(name);
-  summary.appendChild(tag);
-  row.appendChild(summary);
+  open.appendChild(name);
+  open.appendChild(tag);
+  row.appendChild(open);
 
-  const body = document.createElement('div');
-  body.className = 'editor-row-body';
-
-  const labelField = document.createElement('label');
-  labelField.className = 'editor-field';
-  labelField.textContent = 'Label';
-  const labelInput = document.createElement('input');
-  labelInput.type = 'text';
-  labelInput.dataset.field = 'label';
-  labelInput.value = habit.label;
-  labelInput.autocomplete = 'off';
-  labelField.appendChild(labelInput);
-  body.appendChild(labelField);
-
-  if (habit.cadence === 'weekly-quota') {
-    const targetField = document.createElement('label');
-    targetField.className = 'editor-field';
-    targetField.textContent = 'Days per week';
-    const targetInput = document.createElement('input');
-    targetInput.type = 'number';
-    targetInput.dataset.field = 'weeklyTarget';
-    targetInput.min = '1';
-    targetInput.max = '7';
-    targetInput.step = '1';
-    targetInput.value = habit.weeklyTarget;
-    targetField.appendChild(targetInput);
-    body.appendChild(targetField);
-  }
-
-  const actions = document.createElement('div');
-  actions.className = 'editor-actions';
   for (const [action, text, ariaLabel] of [
-    ['up', '↑', 'Move up'],
-    ['down', '↓', 'Move down'],
-    ['archive', 'Archive', ''],
+    ['up', '↑', `Move ${habit.label} up`],
+    ['down', '↓', `Move ${habit.label} down`],
   ]) {
     const btn = document.createElement('button');
     btn.type = 'button';
+    btn.className = 'editor-row-move';
     btn.dataset.action = action;
     btn.textContent = text;
-    if (ariaLabel) btn.setAttribute('aria-label', ariaLabel);
-    actions.appendChild(btn);
+    btn.setAttribute('aria-label', ariaLabel);
+    row.appendChild(btn);
   }
-  body.appendChild(actions);
 
-  const caption = document.createElement('p');
-  caption.className = 'setting-caption';
-  caption.textContent = 'Archiving keeps its history — you can bring it back anytime.';
-  body.appendChild(caption);
-
-  row.appendChild(body);
   return row;
 }
 
@@ -504,8 +471,7 @@ function buildArchivedRow(habit) {
 }
 
 // Same rebuild-on-change discipline as the Today card rows: the list DOM is
-// rebuilt only when the config actually changed, and expanded rows stay
-// expanded across rebuilds.
+// rebuilt only when the config actually changed.
 let editorSig = null;
 
 function renderHabitEditor(state, todayIso) {
@@ -537,23 +503,81 @@ function renderHabitEditor(state, todayIso) {
   if (sig === editorSig) return;
   editorSig = sig;
 
-  const openIds = new Set(
-    [...listEl.querySelectorAll('details[open]')].map((d) => d.dataset.habitId)
-  );
-
   // Active rows grouped like the Today card (weekly, core, bonus), array
   // order within each group; archived rows in plain array order.
   listEl.innerHTML = '';
   const active = settings.habits.filter((h) => activeIds.has(h.id));
   for (const cadence of ['weekly-quota', 'daily-core', 'bonus']) {
     for (const habit of active.filter((h) => h.cadence === cadence)) {
-      listEl.appendChild(buildEditorRow(habit, openIds));
+      listEl.appendChild(buildEditorRow(habit));
     }
   }
 
   archivedEl.innerHTML = '';
   for (const habit of settings.habits.filter((h) => !activeIds.has(h.id))) {
     archivedEl.appendChild(buildArchivedRow(habit));
+  }
+}
+
+const CADENCE_DISPLAY = {
+  'daily-core': 'Daily core',
+  'weekly-quota': 'Weekly',
+  bonus: 'Bonus',
+};
+
+// Populates the habit create/edit screen from state.habitScreen. Called once
+// when the screen opens — never from renderAll — so background renders
+// (rollover, sync merges) can't clobber what the user is typing.
+export function renderHabitScreen(state) {
+  const screen = state.habitScreen;
+  if (!screen) return;
+  const isCreate = screen.mode === 'create';
+  const habit = isCreate ? null : state.settings.habits.find((h) => h.id === screen.id);
+  if (!isCreate && !habit) return;
+
+  const titleEl = document.getElementById('habit-screen-title');
+  if (titleEl) titleEl.textContent = isCreate ? 'New habit' : 'Edit habit';
+
+  const labelEl = document.getElementById('habit-screen-label');
+  if (labelEl) labelEl.value = isCreate ? '' : habit.label;
+
+  // Create: a live type select (choice is permanent, the caption says so).
+  // Edit: the select disappears entirely; the type is shown as plain text.
+  const cadenceEl = document.getElementById('habit-screen-cadence');
+  const cadenceLabelEl = document.getElementById('habit-screen-cadence-label');
+  const cadenceNoteEl = document.getElementById('habit-screen-cadence-note');
+  const cadenceStaticEl = document.getElementById('habit-screen-cadence-static');
+  if (cadenceEl) {
+    cadenceEl.hidden = !isCreate;
+    if (isCreate) cadenceEl.value = 'daily-core';
+  }
+  if (cadenceLabelEl) cadenceLabelEl.hidden = !isCreate;
+  if (cadenceNoteEl) cadenceNoteEl.hidden = !isCreate;
+  if (cadenceStaticEl) {
+    cadenceStaticEl.hidden = isCreate;
+    if (!isCreate) cadenceStaticEl.textContent = `Type: ${CADENCE_DISPLAY[habit.cadence]} — fixed at creation.`;
+  }
+
+  const weekly = isCreate ? false : habit.cadence === 'weekly-quota';
+  const targetEl = document.getElementById('habit-screen-target');
+  const targetLabelEl = document.getElementById('habit-screen-target-label');
+  if (targetEl) {
+    targetEl.hidden = !weekly;
+    targetEl.value = weekly ? habit.weeklyTarget : 3;
+  }
+  if (targetLabelEl) targetLabelEl.hidden = !weekly;
+
+  const saveEl = document.getElementById('habit-screen-save');
+  if (saveEl) saveEl.textContent = isCreate ? 'Add habit' : 'Save';
+
+  const archiveGroup = document.getElementById('habit-screen-archive-group');
+  if (archiveGroup) archiveGroup.hidden = isCreate;
+
+  // Remove exists only while the habit has no logged history; once a day is
+  // marked done it is absent entirely and Archive is the path (amended D8).
+  const removeGroup = document.getElementById('habit-screen-remove-group');
+  if (removeGroup) {
+    removeGroup.hidden = isCreate || habitHasHistory(state.entries, habit.id);
   }
 }
 

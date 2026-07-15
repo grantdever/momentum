@@ -12,6 +12,7 @@ import {
   daySummary,
   intensityLevel,
   weeklyDoneOn,
+  habitHasHistory,
 } from '../js/streaks.js';
 import {
   defaultHabits,
@@ -26,6 +27,7 @@ import {
   clampSlack,
   clampWeeklyTarget,
   moveHabit,
+  removeHabit,
 } from '../js/habits.js';
 import { migrateSettings, defaultSettings } from '../js/migrate.js';
 import { mergeEntries } from '../js/merge.js';
@@ -993,6 +995,43 @@ t('weeklyQuotaStreak: the week boundary shift changes bucketing (Sunday case)', 
   // Sunday weeks: current week 07-12..07-18 has Sun+Mon = 2/3 in progress (no
   // credit yet), and the completed week 07-05..07-11 had only 2/3 -> streak 0.
   assert.equal(weeklyQuotaStreak(entries, habit, '2026-07-12', 'sunday'), 0);
+});
+
+// --- editor redesign: has-history gate and remove -------------------------
+
+t('habitHasHistory: true only when some entry marks the habit done', () => {
+  const entries = {
+    '2026-07-13': e('2026-07-13', { walked: true }),
+    '2026-07-14': e('2026-07-14'),
+  };
+  assert.equal(habitHasHistory(entries, 'walked'), true);
+  assert.equal(habitHasHistory(entries, 'cookedAtHome'), false);
+});
+
+t('habitHasHistory: false stamps from createEmptyEntry are NOT history', () => {
+  // A brand-new habit gets stamped false onto today's entry the moment any
+  // habit is toggled — that alone must not block Remove.
+  const entries = {
+    '2026-07-15': e('2026-07-15', { walked: true, newHabit: false }),
+  };
+  assert.equal(habitHasHistory(entries, 'newHabit'), false);
+});
+
+t('habitHasHistory: empty entries or unknown id -> false; done on an off-day counts', () => {
+  assert.equal(habitHasHistory({}, 'walked'), false);
+  assert.equal(habitHasHistory({ '2026-07-14': e('2026-07-14') }, 'neverExisted'), false);
+  const offDay = { '2026-07-14': e('2026-07-14', { walked: true, offDay: true }) };
+  assert.equal(habitHasHistory(offDay, 'walked'), true);
+});
+
+t('removeHabit: deletes exactly that habit from config; input not mutated', () => {
+  const habits = freshHabits();
+  const snapshot = JSON.parse(JSON.stringify(habits));
+  const removed = removeHabit(habits, 'bonusReading');
+  assert.equal(removed.length, habits.length - 1);
+  assert.ok(!removed.some((h) => h.id === 'bonusReading'));
+  assert.deepEqual(removeHabit(habits, 'nope').map((h) => h.id), habits.map((h) => h.id));
+  assert.deepEqual(habits, snapshot);
 });
 
 t('historyWeeks: week columns re-bucket under a different start day', () => {

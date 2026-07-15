@@ -11,11 +11,12 @@ import {
   loadLastOpen,
   saveLastOpen,
 } from './store.js';
-import { daySummary } from './streaks.js';
+import { daySummary, habitHasHistory } from './streaks.js';
 import {
   activeCoresOn,
   archiveHabit,
   unarchiveHabit,
+  removeHabit,
   moveHabit,
   generateHabitId,
   clampSlack,
@@ -23,7 +24,7 @@ import {
 } from './habits.js';
 import { mergeEntries } from './merge.js';
 import { parseImport, countUpdated } from './importer.js';
-import { renderAll, renderSyncStatus } from './render.js';
+import { renderAll, renderSyncStatus, renderHabitScreen } from './render.js';
 import {
   pull,
   pushNow,
@@ -61,6 +62,7 @@ function init() {
     activeDate: todayISO(),
     currentDate: todayISO(),
     view: 'today',
+    habitScreen: null, // null | { mode: 'create' } | { mode: 'edit', id }
   };
 
   let syncSuspended = false;
@@ -324,17 +326,39 @@ function init() {
     renderAll(state);
   });
 
-  document.getElementById('nav').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-view]');
-    if (!btn) return;
-    const view = btn.dataset.view;
+  // The habit screen is a sub-screen of Settings: not on the nav, and the
+  // Settings tab stays highlighted while it is open.
+  function showView(view) {
     state.view = view;
     for (const section of document.querySelectorAll('.view')) {
       section.classList.toggle('active', section.id === `view-${view}`);
     }
+    const navView = view === 'habit' ? 'settings' : view;
     for (const navBtn of document.querySelectorAll('#nav [data-view]')) {
-      navBtn.classList.toggle('active', navBtn.dataset.view === view);
+      navBtn.classList.toggle('active', navBtn.dataset.view === navView);
     }
+  }
+
+  function openHabitScreen(screen) {
+    state.habitScreen = screen;
+    renderHabitScreen(state);
+    showView('habit');
+    if (screen.mode === 'create') {
+      document.getElementById('habit-screen-label').focus();
+    }
+  }
+
+  function closeHabitScreen() {
+    state.habitScreen = null;
+    showView('settings');
+    renderAll(state);
+  }
+
+  document.getElementById('nav').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-view]');
+    if (!btn) return;
+    state.habitScreen = null; // leaving the habit screen discards unsaved edits
+    showView(btn.dataset.view);
     renderAll(state);
   });
 
@@ -385,41 +409,20 @@ function init() {
 
   const editorEl = document.getElementById('habit-editor');
 
-  function addHabitFromForm() {
-    const labelInput = document.getElementById('add-habit-label');
-    const label = labelInput.value.trim();
-    if (!label) return;
-    const cadence = document.getElementById('add-habit-cadence').value;
-    const habit = {
-      id: generateHabitId(label, state.settings.habits),
-      label,
-      cadence,
-      active: [{ from: todayISO(), to: null }],
-    };
-    if (cadence === 'weekly-quota') {
-      habit.weeklyTarget = clampWeeklyTarget(numberOrNaN(document.getElementById('add-habit-target').value)) ?? 3;
-    }
-    state.settings.habits.push(habit);
-    labelInput.value = '';
-    persistSettings();
-  }
-
   editorEl.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     const action = btn.dataset.action;
-    if (action === 'add') {
-      addHabitFromForm();
-      return;
-    }
     const row = btn.closest('[data-habit-id]');
     if (!row) return;
     const id = row.dataset.habitId;
     const today = todayISO();
     const settings = state.settings;
-    if (action === 'archive') {
-      settings.habits = settings.habits.map((h) => (h.id === id ? archiveHabit(h, today) : h));
-    } else if (action === 'unarchive') {
+    if (action === 'edit') {
+      openHabitScreen({ mode: 'edit', id });
+      return;
+    }
+    if (action === 'unarchive') {
       settings.habits = settings.habits.map((h) => (h.id === id ? unarchiveHabit(h, today) : h));
     } else if (action === 'up') {
       settings.habits = moveHabit(settings.habits, id, -1, today);
@@ -431,6 +434,10 @@ function init() {
     persistSettings();
   });
 
+  document.getElementById('new-habit-btn').addEventListener('click', () => {
+    openHabitScreen({ mode: 'create' });
+  });
+
   // Empty inputs parse as NaN, not 0, so clearing a field never silently
   // means "zero" — it reads as invalid and the old value is restored.
   function numberOrNaN(value) {
@@ -440,45 +447,95 @@ function init() {
 
   editorEl.addEventListener('change', (e) => {
     const target = e.target;
-    if (target.id === 'set-slack') {
-      const slack = clampSlack(numberOrNaN(target.value));
-      if (slack !== null) {
-        // Cap so today's threshold stays >= 1 (typed values can exceed the
-        // input's max attribute).
-        const coreTotal = activeCoresOn(state.settings.habits, todayISO()).length;
-        state.settings.coreSlack = Math.min(slack, Math.max(0, coreTotal - 1));
-        persistSettings();
+    if (target.id !== 'set-slack') return;
+    const slack = clampSlack(numberOrNaN(target.value));
+    if (slack !== null) {
+      // Cap so today's threshold stays >= 1 (typed values can exceed the
+      // input's max attribute).
+      const coreTotal = activeCoresOn(state.settings.habits, todayISO()).length;
+      state.settings.coreSlack = Math.min(slack, Math.max(0, coreTotal - 1));
+      persistSettings();
+    }
+    target.value = state.settings.coreSlack;
+  });
+
+  // --- Habit create/edit screen -------------------------------------------
+  // Transactional: fields are populated once on open and read back only on
+  // Save. Cancel (or any nav tap) discards. Nothing here touches entries.
+
+  function saveHabitScreen() {
+    const screen = state.habitScreen;
+    if (!screen) return;
+    const label = document.getElementById('habit-screen-label').value.trim();
+    if (!label) return; // a habit needs a name; stay on the screen
+    const settings = state.settings;
+    if (screen.mode === 'create') {
+      const cadence = document.getElementById('habit-screen-cadence').value;
+      const habit = {
+        id: generateHabitId(label, settings.habits),
+        label,
+        cadence,
+        active: [{ from: todayISO(), to: null }],
+      };
+      if (cadence === 'weekly-quota') {
+        habit.weeklyTarget =
+          clampWeeklyTarget(numberOrNaN(document.getElementById('habit-screen-target').value)) ?? 3;
       }
-      target.value = state.settings.coreSlack;
+      settings.habits.push(habit);
+    } else {
+      const habit = settings.habits.find((h) => h.id === screen.id);
+      if (!habit) {
+        closeHabitScreen();
+        return;
+      }
+      habit.label = label; // renames touch only the label — the id is permanent
+      if (habit.cadence === 'weekly-quota') {
+        const targetVal = clampWeeklyTarget(numberOrNaN(document.getElementById('habit-screen-target').value));
+        if (targetVal !== null) habit.weeklyTarget = targetVal;
+      }
+    }
+    saveSettings(settings);
+    closeHabitScreen();
+  }
+
+  document.getElementById('view-habit').addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.id === 'habit-screen-save') {
+      saveHabitScreen();
       return;
     }
-    if (target.id === 'add-habit-cadence') {
-      const weekly = target.value === 'weekly-quota';
-      document.getElementById('add-habit-target').hidden = !weekly;
-      document.getElementById('add-habit-target-label').hidden = !weekly;
+    if (btn.id === 'habit-screen-cancel') {
+      closeHabitScreen();
       return;
     }
-    const row = target.closest('[data-habit-id]');
-    if (!row || !target.dataset.field) return;
-    const habit = state.settings.habits.find((h) => h.id === row.dataset.habitId);
-    if (!habit) return;
-    if (target.dataset.field === 'label') {
-      const label = target.value.trim();
-      if (label) {
-        habit.label = label; // renames touch only the label — the id is permanent
-        persistSettings();
-      } else {
-        target.value = habit.label; // empty rename: restore the current label
+    const screen = state.habitScreen;
+    if (!screen || screen.mode !== 'edit') return;
+    if (btn.id === 'habit-screen-archive') {
+      state.settings.habits = state.settings.habits.map((h) =>
+        h.id === screen.id ? archiveHabit(h, todayISO()) : h
+      );
+      saveSettings(state.settings);
+      closeHabitScreen();
+    } else if (btn.id === 'habit-screen-remove') {
+      // Re-check right before acting: a sync merge could have landed history
+      // while the screen was open.
+      if (habitHasHistory(state.entries, screen.id)) {
+        renderHabitScreen(state); // Remove disappears; nothing else changes
+        return;
       }
-    } else if (target.dataset.field === 'weeklyTarget') {
-      const targetVal = clampWeeklyTarget(numberOrNaN(target.value));
-      if (targetVal !== null) {
-        habit.weeklyTarget = targetVal;
-        persistSettings();
-      } else {
-        target.value = habit.weeklyTarget;
-      }
+      state.settings.habits = removeHabit(state.settings.habits, screen.id);
+      saveSettings(state.settings);
+      closeHabitScreen();
     }
+  });
+
+  // Choosing "Weekly" while creating reveals the target field — a deliberate
+  // selection, never a mid-typing surprise.
+  document.getElementById('habit-screen-cadence').addEventListener('change', (e) => {
+    const weekly = e.target.value === 'weekly-quota';
+    document.getElementById('habit-screen-target').hidden = !weekly;
+    document.getElementById('habit-screen-target-label').hidden = !weekly;
   });
 
   document.getElementById('export-btn').addEventListener('click', async () => {
