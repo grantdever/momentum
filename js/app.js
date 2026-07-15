@@ -19,12 +19,12 @@ import {
   removeHabit,
   moveHabit,
   generateHabitId,
-  clampSlack,
+  changeHabitType,
   clampWeeklyTarget,
 } from './habits.js';
 import { mergeEntries } from './merge.js';
 import { parseImport, countUpdated } from './importer.js';
-import { renderAll, renderSyncStatus, renderHabitScreen } from './render.js';
+import { renderAll, renderSyncStatus, renderHabitScreen, renderHabitScreenControls } from './render.js';
 import {
   pull,
   pushNow,
@@ -62,7 +62,9 @@ function init() {
     activeDate: todayISO(),
     currentDate: todayISO(),
     view: 'today',
-    habitScreen: null, // null | { mode: 'create' } | { mode: 'edit', id }
+    // null | { mode: 'create', cadence, weeklyTarget }
+    //      | { mode: 'edit', id, changeType: null | { cadence, weeklyTarget } }
+    habitScreen: null,
   };
 
   let syncSuspended = false;
@@ -419,7 +421,7 @@ function init() {
     const today = todayISO();
     const settings = state.settings;
     if (action === 'edit') {
-      openHabitScreen({ mode: 'edit', id });
+      openHabitScreen({ mode: 'edit', id, changeType: null });
       return;
     }
     if (action === 'unarchive') {
@@ -435,82 +437,177 @@ function init() {
   });
 
   document.getElementById('new-habit-btn').addEventListener('click', () => {
-    openHabitScreen({ mode: 'create' });
+    openHabitScreen({ mode: 'create', cadence: 'daily-core', weeklyTarget: 3 });
   });
 
-  // Empty inputs parse as NaN, not 0, so clearing a field never silently
-  // means "zero" — it reads as invalid and the old value is restored.
-  function numberOrNaN(value) {
-    const s = String(value).trim();
-    return s === '' ? NaN : Number(s);
-  }
-
-  editorEl.addEventListener('change', (e) => {
-    const target = e.target;
-    if (target.id !== 'set-slack') return;
-    const slack = clampSlack(numberOrNaN(target.value));
-    if (slack !== null) {
-      // Cap so today's threshold stays >= 1 (typed values can exceed the
-      // input's max attribute).
-      const coreTotal = activeCoresOn(state.settings.habits, todayISO()).length;
-      state.settings.coreSlack = Math.min(slack, Math.max(0, coreTotal - 1));
-      persistSettings();
+  // Slack stepper: each tap commits immediately; the max keeps today's
+  // threshold >= 1. Buttons disable at the edges, so deltas stay in range,
+  // but clamp anyway (a stale render must never step out of bounds).
+  editorEl.addEventListener('click', (e) => {
+    const stepBtn = e.target.closest('.stepper-btn[data-stepper="slack"]');
+    if (!stepBtn) return;
+    const coreTotal = activeCoresOn(state.settings.habits, todayISO()).length;
+    const max = Math.max(0, coreTotal - 1);
+    const next = Math.min(max, Math.max(0, state.settings.coreSlack + Number(stepBtn.dataset.step)));
+    if (next !== state.settings.coreSlack) {
+      state.settings.coreSlack = next;
+      persistSettings(); // re-render updates the stepper display + goal note
     }
-    target.value = state.settings.coreSlack;
   });
 
   // --- Habit create/edit screen -------------------------------------------
-  // Transactional: fields are populated once on open and read back only on
-  // Save. Cancel (or any nav tap) discards. Nothing here touches entries.
+  // One commit idiom everywhere: CREATE is transactional — fields are read
+  // once when "Add Habit" is tapped, back cancels. EDIT auto-commits per
+  // field — label on blur, weekly target per stepper tap — so back (or any
+  // nav tap) just leaves; there is nothing to save. Nothing here touches
+  // entries.
 
-  function saveHabitScreen() {
+  function currentEditHabit() {
     const screen = state.habitScreen;
-    if (!screen) return;
-    const label = document.getElementById('habit-screen-label').value.trim();
-    if (!label) return; // a habit needs a name; stay on the screen
-    const settings = state.settings;
-    if (screen.mode === 'create') {
-      const cadence = document.getElementById('habit-screen-cadence').value;
-      const habit = {
-        id: generateHabitId(label, settings.habits),
-        label,
-        cadence,
-        active: [{ from: todayISO(), to: null }],
-      };
-      if (cadence === 'weekly-quota') {
-        habit.weeklyTarget =
-          clampWeeklyTarget(numberOrNaN(document.getElementById('habit-screen-target').value)) ?? 3;
-      }
-      settings.habits.push(habit);
-    } else {
-      const habit = settings.habits.find((h) => h.id === screen.id);
-      if (!habit) {
-        closeHabitScreen();
-        return;
-      }
-      habit.label = label; // renames touch only the label — the id is permanent
-      if (habit.cadence === 'weekly-quota') {
-        const targetVal = clampWeeklyTarget(numberOrNaN(document.getElementById('habit-screen-target').value));
-        if (targetVal !== null) habit.weeklyTarget = targetVal;
-      }
+    if (!screen || screen.mode !== 'edit') return null;
+    return state.settings.habits.find((h) => h.id === screen.id) || null;
+  }
+
+  function addHabitFromScreen() {
+    const screen = state.habitScreen;
+    if (!screen || screen.mode !== 'create') return;
+    const labelEl = document.getElementById('habit-screen-label');
+    const label = labelEl.value.trim();
+    if (!label) {
+      labelEl.focus(); // a habit needs a name; stay on the screen
+      return;
     }
+    const settings = state.settings;
+    const habit = {
+      id: generateHabitId(label, settings.habits),
+      label,
+      cadence: screen.cadence,
+      active: [{ from: todayISO(), to: null }],
+    };
+    if (screen.cadence === 'weekly-quota') {
+      habit.weeklyTarget = clampWeeklyTarget(screen.weeklyTarget) ?? 3;
+    }
+    settings.habits.push(habit);
     saveSettings(settings);
     closeHabitScreen();
+  }
+
+  // Auto-commit the label (edit mode): change fires on blur with a new
+  // value. Empty reverts to the previous label — a habit always has a name.
+  const habitLabelEl = document.getElementById('habit-screen-label');
+  habitLabelEl.addEventListener('change', () => {
+    const habit = currentEditHabit();
+    if (!habit) return; // create mode: the label is read at Add Habit time
+    const value = habitLabelEl.value.trim();
+    if (!value) {
+      habitLabelEl.value = habit.label;
+      return;
+    }
+    habitLabelEl.value = value; // normalize trimmed whitespace
+    if (value !== habit.label) {
+      habit.label = value; // renames touch only the label — the id is permanent
+      persistSettings();
+    }
+  });
+  habitLabelEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') habitLabelEl.blur(); // hardware keyboards commit like "done"
+  });
+
+  function performChangeType() {
+    const screen = state.habitScreen;
+    const habit = currentEditHabit();
+    const ct = screen && screen.changeType;
+    if (!habit || !ct || !ct.cadence) return;
+    const before = new Set(state.settings.habits.map((h) => h.id));
+    state.settings.habits = changeHabitType(
+      state.settings.habits,
+      habit.id,
+      ct.cadence,
+      todayISO(),
+      ct.weeklyTarget
+    );
+    const successor = state.settings.habits.find((h) => !before.has(h.id));
+    saveSettings(state.settings);
+    renderAll(state);
+    // Continue editing on the successor — the natural next step after the
+    // guided archive-and-recreate.
+    if (successor) openHabitScreen({ mode: 'edit', id: successor.id, changeType: null });
+    else closeHabitScreen();
   }
 
   document.getElementById('view-habit').addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
-    if (btn.id === 'habit-screen-save') {
-      saveHabitScreen();
-      return;
-    }
-    if (btn.id === 'habit-screen-cancel') {
+    const screen = state.habitScreen;
+    if (!screen) return;
+
+    if (btn.id === 'habit-screen-back') {
+      // Create: cancel. Edit: plain leave — auto-commit already saved
+      // everything (the input's blur fired before this click).
       closeHabitScreen();
       return;
     }
-    const screen = state.habitScreen;
-    if (!screen || screen.mode !== 'edit') return;
+
+    if (btn.id === 'habit-screen-save') {
+      addHabitFromScreen();
+      return;
+    }
+
+    // Type cards (create picker and change-type picker share the markup;
+    // disabled cards never reach here — the browser drops their clicks).
+    const card = btn.closest('.type-card');
+    if (card) {
+      const picker = card.closest('.type-picker');
+      if (picker && picker.id === 'habit-screen-type-picker' && screen.mode === 'create') {
+        screen.cadence = card.dataset.cadence;
+      } else if (picker && picker.id === 'change-type-picker' && screen.mode === 'edit' && screen.changeType) {
+        screen.changeType.cadence = card.dataset.cadence;
+      } else {
+        return;
+      }
+      renderHabitScreenControls(state);
+      return;
+    }
+
+    // Steppers. Create adjusts draft state; edit commits per tap.
+    if (btn.classList.contains('stepper-btn')) {
+      const delta = Number(btn.dataset.step);
+      if (btn.dataset.stepper === 'target') {
+        if (screen.mode === 'create') {
+          screen.weeklyTarget = clampWeeklyTarget(screen.weeklyTarget + delta) ?? 3;
+        } else {
+          const habit = currentEditHabit();
+          if (!habit || habit.cadence !== 'weekly-quota') return;
+          const next = clampWeeklyTarget((habit.weeklyTarget ?? 3) + delta);
+          if (next !== null && next !== habit.weeklyTarget) {
+            habit.weeklyTarget = next;
+            persistSettings();
+          }
+        }
+      } else if (btn.dataset.stepper === 'change-target' && screen.mode === 'edit' && screen.changeType) {
+        screen.changeType.weeklyTarget = clampWeeklyTarget(screen.changeType.weeklyTarget + delta) ?? 3;
+      } else {
+        return;
+      }
+      renderHabitScreenControls(state);
+      return;
+    }
+
+    if (screen.mode !== 'edit') return;
+
+    if (btn.id === 'habit-screen-change-type') {
+      // Toggle the confirm card; opening starts with no type picked, so the
+      // consequence caption and confirm only appear after a deliberate choice.
+      screen.changeType = screen.changeType ? null : { cadence: null, weeklyTarget: 3 };
+      renderHabitScreenControls(state);
+      return;
+    }
+
+    if (btn.id === 'change-type-confirm') {
+      performChangeType();
+      return;
+    }
+
     if (btn.id === 'habit-screen-archive') {
       state.settings.habits = state.settings.habits.map((h) =>
         h.id === screen.id ? archiveHabit(h, todayISO()) : h
@@ -521,21 +618,13 @@ function init() {
       // Re-check right before acting: a sync merge could have landed history
       // while the screen was open.
       if (habitHasHistory(state.entries, screen.id)) {
-        renderHabitScreen(state); // Remove disappears; nothing else changes
+        renderHabitScreenControls(state); // Remove disappears; nothing else changes
         return;
       }
       state.settings.habits = removeHabit(state.settings.habits, screen.id);
       saveSettings(state.settings);
       closeHabitScreen();
     }
-  });
-
-  // Choosing "Weekly" while creating reveals the target field — a deliberate
-  // selection, never a mid-typing surprise.
-  document.getElementById('habit-screen-cadence').addEventListener('change', (e) => {
-    const weekly = e.target.value === 'weekly-quota';
-    document.getElementById('habit-screen-target').hidden = !weekly;
-    document.getElementById('habit-screen-target-label').hidden = !weekly;
   });
 
   document.getElementById('export-btn').addEventListener('click', async () => {

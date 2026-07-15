@@ -28,6 +28,7 @@ import {
   clampWeeklyTarget,
   moveHabit,
   removeHabit,
+  changeHabitType,
 } from '../js/habits.js';
 import { migrateSettings, defaultSettings } from '../js/migrate.js';
 import { mergeEntries } from '../js/merge.js';
@@ -272,6 +273,51 @@ t('generateHabitId: rejects all 5 reserved keys [R4]', () => {
     const id = generateHabitId(key, []);
     assert.notEqual(id, key);
   }
+});
+
+// changeHabitType never receives entries — the old habit's logged history is
+// structurally untouchable from here; only the config array changes.
+
+t('changeHabitType: successor gets a fresh id, same label, new cadence', () => {
+  const habits = freshHabits();
+  const out = changeHabitType(habits, 'walked', 'bonus', '2026-07-15');
+  const old = out.find((h) => h.id === 'walked');
+  const successor = out.find((h) => h.label === 'Walked' && h.id !== 'walked');
+  assert.ok(old);
+  assert.ok(successor);
+  assert.notEqual(successor.id, 'walked'); // identical label must still mint a fresh id
+  assert.equal(successor.id, 'walked2');
+  assert.equal(successor.cadence, 'bonus');
+  assert.equal('weeklyTarget' in successor, false); // non-weekly successor carries no target
+});
+
+t('changeHabitType: old interval closes at dateIso, successor active from dateIso, inserted adjacent', () => {
+  const habits = freshHabits();
+  const out = changeHabitType(habits, 'walked', 'bonus', '2026-07-15');
+  const old = out.find((h) => h.id === 'walked');
+  assert.deepEqual(old.active, [{ from: null, to: '2026-07-15' }]);
+  const successor = out.find((h) => h.id === 'walked2');
+  assert.deepEqual(successor.active, [{ from: '2026-07-15', to: null }]);
+  assert.equal(out.indexOf(successor), out.indexOf(old) + 1);
+  assert.equal(out.length, habits.length + 1);
+});
+
+t('changeHabitType: weeklyTarget carried for weekly-quota, clamped into 1-7, defaulted when absent', () => {
+  const habits = freshHabits();
+  const carried = changeHabitType(habits, 'walked', 'weekly-quota', '2026-07-15', 4);
+  assert.equal(carried.find((h) => h.id === 'walked2').weeklyTarget, 4);
+  const clamped = changeHabitType(habits, 'walked', 'weekly-quota', '2026-07-15', 12);
+  assert.equal(clamped.find((h) => h.id === 'walked2').weeklyTarget, 7);
+  const defaulted = changeHabitType(habits, 'walked', 'weekly-quota', '2026-07-15');
+  assert.equal(defaulted.find((h) => h.id === 'walked2').weeklyTarget, 3);
+});
+
+t('changeHabitType: unknown id is a no-op and the input array is never mutated', () => {
+  const habits = freshHabits();
+  const snapshot = JSON.stringify(habits);
+  assert.equal(changeHabitType(habits, 'nope', 'bonus', '2026-07-15'), habits);
+  changeHabitType(habits, 'walked', 'bonus', '2026-07-15');
+  assert.equal(JSON.stringify(habits), snapshot);
 });
 
 // ---------- migrate.js ----------

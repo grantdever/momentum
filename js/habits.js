@@ -119,6 +119,32 @@ function slugify(label) {
     .join('');
 }
 
+// Change a habit's type by archiving it and creating a successor: the old
+// habit's open interval closes at dateIso (its history stays under its own
+// id forever), and a fresh habit with the same label but a NEW id starts
+// from dateIso. The id is never reused — that separation is the point: the
+// two cadences' histories must not blend. The successor is inserted directly
+// after the old habit so the pair stays adjacent in config order. Entries
+// are never touched. No-op if the id is unknown.
+export function changeHabitType(habits, id, newCadence, dateIso, weeklyTarget) {
+  const idx = habits.findIndex((h) => h.id === id);
+  if (idx === -1) return habits;
+  const old = habits[idx];
+  const successor = {
+    id: generateHabitId(old.label, habits),
+    label: old.label,
+    cadence: newCadence,
+    active: [{ from: dateIso, to: null }],
+  };
+  if (newCadence === 'weekly-quota') {
+    successor.weeklyTarget = clampWeeklyTarget(weeklyTarget) ?? 3;
+  }
+  const out = habits.slice();
+  out[idx] = archiveHabit(old, dateIso);
+  out.splice(idx + 1, 0, successor);
+  return out;
+}
+
 // camelCase slug of the label, deduped with a numeric suffix against the
 // reserved-key blocklist and the full historical id set (active + archived
 // habits alike, per [R4][R5]) — `habits` should be the complete stored array.

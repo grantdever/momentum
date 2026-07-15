@@ -37,6 +37,12 @@
   box-sizing: border-box;
 }
 
+/* JS toggles `hidden` on elements whose classes set display:flex/grid; the
+   author display would silently beat the UA [hidden] rule without this. */
+[hidden] {
+  display: none !important;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -871,31 +877,183 @@ input[type="number"]::-webkit-outer-spin-button {
 
 /* ---------- Habit create/edit screen ---------- */
 
-.screen-actions {
-  display: flex;
-  gap: var(--s2);
-  margin-top: var(--s3);
+/* Screen header: quiet back affordance above a leading large title. */
+.screen-header {
+  margin-bottom: 20px;
 }
 
-.screen-actions button {
-  flex: 1;
-  min-height: var(--tap-min);
+.screen-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--s2);
+  margin-left: calc(-1 * var(--s2)); /* optical: chevron aligns to the content edge */
+  background: transparent;
+  border: none;
+  border-radius: var(--r-control);
+  color: var(--text-dim);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.screen-back::before {
+  content: "\2039";
+  font-size: 22px;
+  line-height: 1;
+  margin-right: var(--s1);
+}
+
+.screen-header .view-title {
+  margin: var(--s1) 0 0;
+}
+
+/* Type card-picker: three stacked selectable cards, radio semantics. */
+.type-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.type-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s1);
+  width: 100%;
+  padding: var(--s3) var(--s4);
   background: var(--bg-row);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  font-weight: 600;
+  border-radius: var(--r-control);
+  text-align: left;
   cursor: pointer;
   box-shadow: inset 0 1px 0 var(--edge);
 }
 
-#habit-screen-save {
-  background: var(--accent-dim);
+.type-card[aria-checked="true"] {
   border-color: var(--accent);
 }
 
+.type-card-name {
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Leading check glyph: slot is always reserved so selection never reflows. */
+.type-card-name::before {
+  content: "\2713";
+  width: 20px;
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0;
+}
+
+.type-card[aria-checked="true"] .type-card-name::before {
+  opacity: 1;
+}
+
+.type-card-desc {
+  font-size: 13px;
+  line-height: 1.38;
+  color: var(--text-dim);
+  padding-left: 20px; /* optical: aligns with the name text after the glyph slot */
+}
+
+.type-card[disabled] {
+  cursor: default;
+  color: var(--text-dim);
+}
+
+.type-card.current::after {
+  content: "current";
+  position: absolute;
+  top: var(--s3);
+  right: var(--s4);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+/* Static type row (edit mode). */
+.type-static {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  min-height: 44px;
+}
+
+.type-static-current {
+  font-size: 15px;
+}
+
+.quiet-btn {
+  background: transparent;
+  border: none;
+  border-radius: var(--r-control);
+  color: var(--text-dim);
+  font-size: 15px;
+  min-height: 44px;
+  padding: 0 var(--s2);
+  margin-right: calc(-1 * var(--s2)); /* optical: text aligns to the row edge */
+  cursor: pointer;
+}
+
+/* Stepper: explicit − / + control, no keyboard needed. */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.stepper-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
+.stepper-btn[disabled] {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.stepper-value {
+  min-width: 40px;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Primary tier: exactly one per screen (create's "Add Habit"). */
+.primary-action {
+  min-height: var(--tap-min);
+  width: 100%;
+  margin-top: var(--s2);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
 #habit-screen-archive,
-#habit-screen-remove {
+#habit-screen-remove,
+#change-type-confirm {
   min-height: var(--tap-min);
   background: var(--bg-row);
   border: 1px solid var(--border);
@@ -904,6 +1062,17 @@ input[type="number"]::-webkit-outer-spin-button {
   font-weight: 600;
   cursor: pointer;
   box-shadow: inset 0 1px 0 var(--edge);
+}
+
+/* Caution outline, never filled: visually distinct, not alarming. */
+#habit-screen-remove {
+  color: var(--caution);
+  border-color: var(--caution);
+}
+
+#change-type-confirm[disabled] {
+  color: var(--text-faint);
+  cursor: default;
 }
 
 .editor-subsection summary {
@@ -949,12 +1118,14 @@ input[type="number"]::-webkit-outer-spin-button {
   box-shadow: inset 0 1px 0 var(--edge);
 }
 
+/* Neutral tier (design-system button rules): Export, Import, and New habit
+   are not save-equivalents, so they never get the accent fill. */
 #export-btn,
 #import-btn,
 #new-habit-btn {
   min-height: var(--tap-min);
-  background: var(--accent-dim);
-  border: 1px solid var(--accent);
+  background: var(--bg-row);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
   font-weight: 600;

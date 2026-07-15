@@ -493,8 +493,7 @@ function renderHabitEditor(state, todayIso) {
   }
   const slackEl = document.getElementById('set-slack');
   if (slackEl) {
-    slackEl.max = Math.max(0, coreTotal - 1);
-    if (document.activeElement !== slackEl) slackEl.value = settings.coreSlack;
+    setStepperDisplay(slackEl, settings.coreSlack, 0, Math.max(0, coreTotal - 1));
   }
 
   const sig = JSON.stringify(
@@ -525,9 +524,36 @@ const CADENCE_DISPLAY = {
   bonus: 'Bonus',
 };
 
+// Shared stepper display: value text plus disabled state at the range edges.
+function setStepperDisplay(valueEl, value, min, max) {
+  valueEl.textContent = String(value);
+  const wrap = valueEl.closest('.stepper');
+  if (!wrap) return;
+  const minus = wrap.querySelector('[data-step="-1"]');
+  const plus = wrap.querySelector('[data-step="1"]');
+  if (minus) minus.disabled = value <= min;
+  if (plus) plus.disabled = value >= max;
+}
+
+function setTypeCards(pickerEl, selectedCadence, currentCadence) {
+  for (const card of pickerEl.querySelectorAll('.type-card')) {
+    const isCurrent = currentCadence != null && card.dataset.cadence === currentCadence;
+    card.disabled = isCurrent;
+    card.classList.toggle('current', isCurrent);
+    card.setAttribute('aria-checked', String(card.dataset.cadence === selectedCadence));
+  }
+}
+
+function setHidden(id, hidden) {
+  const el = document.getElementById(id);
+  if (el) el.hidden = hidden;
+}
+
 // Populates the habit create/edit screen from state.habitScreen. Called once
 // when the screen opens — never from renderAll — so background renders
-// (rollover, sync merges) can't clobber what the user is typing.
+// (rollover, sync merges) can't clobber what the user is typing. Everything
+// EXCEPT the label input lives in renderHabitScreenControls, which is safe
+// to re-run on any control change without touching typed text.
 export function renderHabitScreen(state) {
   const screen = state.habitScreen;
   if (!screen) return;
@@ -541,44 +567,83 @@ export function renderHabitScreen(state) {
   const labelEl = document.getElementById('habit-screen-label');
   if (labelEl) labelEl.value = isCreate ? '' : habit.label;
 
-  // Create: a live type select (choice is permanent, the caption says so).
-  // Edit: the select disappears entirely; the type is shown as plain text.
-  const cadenceEl = document.getElementById('habit-screen-cadence');
-  const cadenceLabelEl = document.getElementById('habit-screen-cadence-label');
-  const cadenceNoteEl = document.getElementById('habit-screen-cadence-note');
-  const cadenceStaticEl = document.getElementById('habit-screen-cadence-static');
-  if (cadenceEl) {
-    cadenceEl.hidden = !isCreate;
-    if (isCreate) cadenceEl.value = 'daily-core';
-  }
-  if (cadenceLabelEl) cadenceLabelEl.hidden = !isCreate;
-  if (cadenceNoteEl) cadenceNoteEl.hidden = !isCreate;
-  if (cadenceStaticEl) {
-    cadenceStaticEl.hidden = isCreate;
-    if (!isCreate) cadenceStaticEl.textContent = `Type: ${CADENCE_DISPLAY[habit.cadence]} — fixed at creation.`;
-  }
+  renderHabitScreenControls(state);
+}
 
-  const weekly = isCreate ? false : habit.cadence === 'weekly-quota';
+// Everything on the habit screen except the label input: type picker or
+// static type row, weekly-target stepper, change-type card, action groups.
+// Never writes the label input, so handlers may call it freely mid-typing.
+export function renderHabitScreenControls(state) {
+  const screen = state.habitScreen;
+  if (!screen) return;
+  const isCreate = screen.mode === 'create';
+  const habit = isCreate ? null : state.settings.habits.find((h) => h.id === screen.id);
+  if (!isCreate && !habit) return;
+
+  // Create: card picker. Edit: static type row + quiet change action.
+  const pickerEl = document.getElementById('habit-screen-type-picker');
+  if (pickerEl) {
+    pickerEl.hidden = !isCreate;
+    if (isCreate) setTypeCards(pickerEl, screen.cadence);
+  }
+  const staticEl = document.getElementById('habit-screen-type-static');
+  if (staticEl) staticEl.hidden = isCreate;
+  const currentEl = document.getElementById('habit-screen-type-current');
+  if (currentEl && !isCreate) currentEl.textContent = CADENCE_DISPLAY[habit.cadence];
+
+  // Weekly target stepper: create shows it while Weekly is picked; edit
+  // shows it for weekly habits (taps commit immediately).
+  const weekly = isCreate ? screen.cadence === 'weekly-quota' : habit.cadence === 'weekly-quota';
+  setHidden('habit-screen-target-label', !weekly);
+  setHidden('habit-screen-target-stepper', !weekly);
   const targetEl = document.getElementById('habit-screen-target');
-  const targetLabelEl = document.getElementById('habit-screen-target-label');
-  if (targetEl) {
-    targetEl.hidden = !weekly;
-    targetEl.value = weekly ? habit.weeklyTarget : 3;
+  if (targetEl && weekly) {
+    setStepperDisplay(targetEl, isCreate ? screen.weeklyTarget : habit.weeklyTarget, 1, 7);
   }
-  if (targetLabelEl) targetLabelEl.hidden = !weekly;
 
-  const saveEl = document.getElementById('habit-screen-save');
-  if (saveEl) saveEl.textContent = isCreate ? 'Add habit' : 'Save';
+  renderChangeTypeCard(state, habit);
 
-  const archiveGroup = document.getElementById('habit-screen-archive-group');
-  if (archiveGroup) archiveGroup.hidden = isCreate;
+  setHidden('habit-screen-save', !isCreate);
+  setHidden('habit-screen-archive-group', isCreate);
 
   // Remove exists only while the habit has no logged history; once a day is
   // marked done it is absent entirely and Archive is the path (amended D8).
-  const removeGroup = document.getElementById('habit-screen-remove-group');
-  if (removeGroup) {
-    removeGroup.hidden = isCreate || habitHasHistory(state.entries, habit.id);
+  setHidden('habit-screen-remove-group', isCreate || habitHasHistory(state.entries, habit.id));
+}
+
+// The inline change-type confirm card (edit mode): pick a new type (the
+// current one is disabled and tagged), see exactly what will happen, then
+// one Neutral confirm. Contains no free-typing inputs, so a full re-render
+// on every interaction is safe.
+function renderChangeTypeCard(state, habit) {
+  const card = document.getElementById('change-type-card');
+  if (!card) return;
+  const screen = state.habitScreen;
+  const open = !!(screen && screen.mode === 'edit' && screen.changeType && habit);
+  card.hidden = !open;
+  if (!open) return;
+
+  const chosen = screen.changeType.cadence;
+  const pickerEl = document.getElementById('change-type-picker');
+  if (pickerEl) setTypeCards(pickerEl, chosen, habit.cadence);
+
+  const weekly = chosen === 'weekly-quota';
+  setHidden('change-type-target-label', !weekly);
+  setHidden('change-type-target-stepper', !weekly);
+  const targetEl = document.getElementById('change-type-target');
+  if (targetEl && weekly) setStepperDisplay(targetEl, screen.changeType.weeklyTarget, 1, 7);
+
+  const noteEl = document.getElementById('change-type-note');
+  if (noteEl) {
+    noteEl.hidden = !chosen;
+    if (chosen) {
+      noteEl.textContent =
+        `“${habit.label}” keeps its history in Archived. ` +
+        `A new ${CADENCE_DISPLAY[chosen].toLowerCase()} habit named “${habit.label}” starts fresh today.`;
+    }
   }
+  const confirmEl = document.getElementById('change-type-confirm');
+  if (confirmEl) confirmEl.disabled = !chosen;
 }
 
 export function renderSettingsForm(state) {
