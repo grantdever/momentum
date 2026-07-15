@@ -1,21 +1,46 @@
 /* Momentum — dark, calm, minimal. A tool, not a game. */
 
 :root {
+  /* Surface ramp — elevation is lightness + hairline + inset edge, never drop shadows. */
   --bg: #0b0f14;
-  --bg-raised: #131a22;
-  --bg-row: #161f29;
-  --border: #232e3a;
-  --text: #e7edf3;
-  --text-dim: #8a97a5;
+  --bg-raised: #161d27;
+  --bg-row: #1b2530;
+  --bg-lift: #232f3d;
+  --border: #2a3441;
+  --edge: rgba(255, 255, 255, 0.04);
+  --text: #eef3f8;
+  --text-dim: rgba(238, 243, 248, 0.62);
+  --text-faint: rgba(238, 243, 248, 0.40);
   --accent: #2fb8a6;
   --accent-dim: #1d5f57;
-  --danger: #c96a4e;
-  --radius: 14px;
+  --caution: #c96a4e;      /* terracotta: Remove affordance + sync banner only, never failure */
+  --danger: var(--caution); /* legacy alias — new code says --caution */
+
+  /* Spacing — 4pt grid. */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+
+  /* Radii — concentric: inner = outer − gap. */
+  --r-card: 14px;
+  --r-control: 10px;
+  --r-cell: 6px;
+  --radius: var(--r-card); /* legacy alias */
+
   --tap-min: 56px;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* JS toggles `hidden` on elements whose classes set display:flex/grid; the
+   author display would silently beat the UA [hidden] rule without this. */
+[hidden] {
+  display: none !important;
 }
 
 html, body {
@@ -36,12 +61,31 @@ button {
   font: inherit;
   color: inherit;
   touch-action: manipulation;
+  transition: transform 80ms ease;
+}
+
+/* Universal tap feedback. .habit-row is excluded — it owns a heavier :active
+   scale plus the hold-to-complete conic sweep and must not be double-driven. */
+button:active:not(.habit-row) {
+  transform: scale(0.97);
 }
 
 button:focus-visible,
 summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Tame native controls globally. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 #app {
@@ -57,55 +101,85 @@ summary:focus-visible {
 
 .view {
   display: none;
-  padding: 20px 16px 24px;
+  padding: var(--s5) var(--s4) var(--s5);
   flex: 1;
+}
+
+/* View-switch entrance: a gentle fade + rise gives the "app" feel. */
+@keyframes view-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .view.active {
   display: block;
+  animation: view-enter 160ms ease-out;
+}
+
+/* The habit create/edit screen enters like an iOS sheet: further, slower, the
+   reconstructed sheet curve. */
+@keyframes habit-enter {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+#view-habit.view.active {
+  animation: habit-enter 240ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* ---------- Today header ---------- */
 
+/* The core streak is the hero: full-width card on top; weekly blocks stack
+   below it as visibly smaller cards. Weekly blocks are inserted by render.js
+   before #sync-status, so document order is streak → weekly… → sync. */
 .today-header {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  align-items: start;
-  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
 }
 
 .streak-block, .training-block {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: var(--s4);
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
+.training-block {
+  padding: var(--s3) var(--s4);
 }
 
 .streak-number {
-  font-size: 44px;
+  font-size: 40px;
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.05;
+  letter-spacing: -1px;
   color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }
 
 .training-streak {
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.27;
+  letter-spacing: -0.5px;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .streak-caption {
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: var(--s1);
+  font-size: 13px;
+  line-height: 1.38;
   color: var(--text-dim);
 }
 
 .week-dots {
   display: flex;
-  gap: 5px;
-  margin-top: 10px;
+  gap: var(--s1);
+  margin-top: var(--s2);
 }
 
 .week-dots .dot {
@@ -120,14 +194,14 @@ summary:focus-visible {
 }
 
 .week-count {
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: var(--s1);
+  font-size: 13px;
+  line-height: 1.38;
   color: var(--text-dim);
 }
 
 .sync-status {
-  grid-column: 1 / -1;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-dim);
   min-height: 14px;
 }
@@ -140,12 +214,12 @@ summary:focus-visible {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  margin-right: 6px;
+  margin-right: var(--s2);
 }
 
 .sync-status.ok::before { background: var(--accent); }
 .sync-status.pending::before { background: var(--text-dim); }
-.sync-status.error::before { background: var(--danger); }
+.sync-status.error::before { background: var(--caution); }
 
 /* ---------- Banner ---------- */
 
@@ -153,14 +227,16 @@ summary:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  background: #2a1a16;
-  border: 1px solid var(--danger);
-  color: #f2c9ba;
+  gap: var(--s3);
+  background: color-mix(in srgb, var(--caution) 14%, var(--bg));
+  border: 1px solid var(--caution);
+  color: color-mix(in srgb, var(--caution) 42%, var(--text));
   border-radius: var(--radius);
-  padding: 12px 14px;
-  margin-bottom: 16px;
-  font-size: 14px;
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s4);
+  font-size: 15px;
+  line-height: 1.4;
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 .banner[hidden] {
@@ -171,7 +247,7 @@ summary:focus-visible {
   background: transparent;
   border: none;
   color: inherit;
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1;
   min-width: 44px;
   min-height: 44px;
@@ -185,44 +261,51 @@ summary:focus-visible {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 4px;
-  margin-bottom: 16px;
+  padding: var(--s1);
+  margin-bottom: var(--s4);
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 .day-btn {
   flex: 1;
   background: transparent;
-  border: none;
+  border: 1px solid transparent; /* reserve the selected border to avoid reflow */
   color: var(--text-dim);
-  padding: 10px 0;
-  border-radius: 10px;
+  padding: var(--s3) 0;
+  border-radius: var(--r-control);
   min-height: 44px;
   cursor: pointer;
 }
 
 .day-btn[aria-pressed="true"] {
-  background: var(--bg-row);
+  background: var(--bg-lift);
+  border-color: var(--border);
   color: var(--text);
   font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .offday-chip {
   background: var(--accent-dim);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
-  padding: 10px 14px;
-  margin-bottom: 16px;
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s4);
   font-size: 13px;
+  line-height: 1.38;
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 .morning-ribbon {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px 14px;
-  margin-bottom: 16px;
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s4);
   font-size: 13px;
+  line-height: 1.38;
   color: var(--text-dim);
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 /* ---------- Habit rows ---------- */
@@ -230,16 +313,16 @@ summary:focus-visible {
 .habit-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
 }
 
 .habit-group-label {
-  font-size: 11px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-dim);
-  margin: 6px 4px -2px;
+  color: var(--text-faint);
+  margin: var(--s3) var(--s1) 0;
 }
 
 .habit-row {
@@ -250,7 +333,7 @@ summary:focus-visible {
   background: var(--bg-row);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0 16px;
+  padding: 0 var(--s4);
   text-align: left;
   cursor: pointer;
   position: relative;
@@ -259,6 +342,7 @@ summary:focus-visible {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 .habit-row:active {
@@ -291,8 +375,10 @@ summary:focus-visible {
 }
 
 .habit-label {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.4px;
 }
 
 .habit-row::after {
@@ -320,14 +406,14 @@ summary:focus-visible {
 /* ---------- Secondary / collapsed section ---------- */
 
 .secondary-section {
-  margin-top: 8px;
-  margin-bottom: 16px;
+  margin-top: var(--s2);
+  margin-bottom: var(--s4);
 }
 
 .secondary-section summary {
   color: var(--text);
-  font-size: 14px;
-  padding: 14px 4px;
+  font-size: 15px;
+  padding: var(--s4) var(--s1);
   cursor: pointer;
   list-style: none;
   -webkit-user-select: none;
@@ -351,8 +437,8 @@ summary:focus-visible {
 .bonus-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
 }
 
 .bonus-row {
@@ -371,10 +457,12 @@ summary:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
-  padding: 12px 14px;
-  font-size: 16px;
+  padding: var(--s3) var(--s4);
+  font-size: 16px; /* iOS zoom floor */
+  line-height: 1.4;
   resize: vertical;
-  margin-bottom: 12px;
+  margin-bottom: var(--s3);
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 .note-input::placeholder {
@@ -382,7 +470,7 @@ summary:focus-visible {
 }
 
 .offday-block {
-  margin-bottom: 8px;
+  margin-bottom: var(--s2);
 }
 
 .offday-toggle {
@@ -392,6 +480,7 @@ summary:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 .offday-toggle[aria-pressed="true"] {
@@ -400,46 +489,47 @@ summary:focus-visible {
   color: var(--text);
 }
 
-.offday-caption {
-  font-size: 12px;
-  color: var(--text-dim);
-  margin: 6px 4px 0;
-}
-
 /* ---------- Cumulative stats ---------- */
 
 .cumulative-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 16px;
+  gap: var(--s2);
+  margin-top: var(--s4);
 }
 
 .cumulative-stats .stat {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px 10px;
+  padding: var(--s3) var(--s2);
   text-align: center;
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 .cumulative-stats .stat-value {
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 700;
+  letter-spacing: -0.4px;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .cumulative-stats .stat-label {
-  font-size: 11px;
+  font-size: 13px;
+  line-height: 1.38;
   color: var(--text-dim);
-  margin-top: 4px;
+  margin-top: var(--s1);
 }
 
 /* ---------- History view ---------- */
 
 .view-title {
-  font-size: 18px;
-  margin: 4px 0 16px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.27;
+  letter-spacing: -0.5px;
+  margin: var(--s3) 0 20px; /* 20 = on-grid title-to-content rhythm; no token */
 }
 
 .history-grid {
@@ -447,21 +537,21 @@ summary:focus-visible {
   grid-template-columns: 18px repeat(5, 1fr);
   grid-template-rows: repeat(7, auto);
   grid-auto-flow: column;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: var(--s1);
+  margin-bottom: var(--s3);
 }
 
 .history-grid .wd-label {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--text-dim);
 }
 
 .history-grid .cell {
   aspect-ratio: 1;
-  border-radius: 6px;
+  border-radius: var(--r-cell);
   background: var(--bg-row);
   border: 1px solid var(--border);
   position: relative;
@@ -475,8 +565,9 @@ summary:focus-visible {
 .grid-detail {
   min-height: 18px;
   font-size: 13px;
+  line-height: 1.38;
   color: var(--text-dim);
-  margin-bottom: 14px;
+  margin-bottom: var(--s4);
 }
 
 .history-grid .cell.i0 { background: var(--bg-row); }
@@ -509,11 +600,23 @@ summary:focus-visible {
 
 .history-legend {
   display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
-  font-size: 11px;
+  flex-direction: column;
+  gap: var(--s2);
+  font-size: 13px;
+  line-height: 1.38;
   color: var(--text-dim);
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+/* Breathing room between the two marker pairs on the second row. */
+.legend-row .legend-swatch + .legend-label {
+  margin-right: var(--s2);
 }
 
 .legend-swatch {
@@ -558,9 +661,9 @@ summary:focus-visible {
 }
 
 .counts-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
-  margin: 20px 0 8px;
+  margin: var(--s5) 0 var(--s2);
   color: var(--text-dim);
 }
 
@@ -568,15 +671,16 @@ summary:focus-visible {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 4px 14px;
+  padding: var(--s1) var(--s4);
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 .habit-count-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
-  font-size: 14px;
+  padding: var(--s3) 0;
+  font-size: 15px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -598,21 +702,37 @@ summary:focus-visible {
 .settings-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--s2);
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 16px;
+  padding: var(--s4);
+  margin-bottom: var(--s4);
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
+/* iOS grouped-table header idiom. */
+.group-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin-bottom: var(--s2);
+}
+
+/* Inside a flex group the gap already provides the 8px below the header. */
+.settings-group .group-title {
+  margin-bottom: 0;
 }
 
 .settings-group label {
   font-size: 13px;
   color: var(--text-dim);
-  margin-top: 6px;
+  margin-top: var(--s2);
 }
 
-.settings-group label:first-child {
+.settings-group label:first-child,
+.settings-group .group-title + label {
   margin-top: 0;
 }
 
@@ -623,32 +743,26 @@ summary:focus-visible {
   min-height: 48px;
   background: var(--bg-row);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--r-control);
   color: var(--text);
-  padding: 0 12px;
-  font-size: 16px;
-}
-
-.gh-sync legend {
-  font-size: 14px;
-  font-weight: 600;
-  padding: 0 4px;
-  color: var(--text);
+  padding: 0 var(--s3);
+  font-size: 16px; /* iOS zoom floor */
 }
 
 .sync-note, .sync-how {
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.38;
   color: var(--text-dim);
-  margin: 4px 0 8px;
+  margin: var(--s1) 0 var(--s2);
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s2);
   min-height: 44px;
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -657,20 +771,366 @@ summary:focus-visible {
 }
 
 .setting-caption {
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.38;
   color: var(--text-dim);
-  margin: 0 0 4px;
+  margin: 0 0 var(--s1);
 }
 
-#export-btn,
-#import-btn {
+.settings-group select {
+  min-height: 48px;
+  background-color: var(--bg-row);
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20viewBox='0%200%2016%2016'%20fill='none'%3E%3Cpath%20d='M4%206l4%204%204-4'%20stroke='%23eef3f8'%20stroke-opacity='.62'%20stroke-width='1.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--s3) center;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  padding: 0 40px 0 var(--s3); /* right gutter reserves space for the chevron */
+  font-size: 16px; /* iOS zoom floor */
+}
+
+/* ---------- Habit editor ---------- */
+
+.habit-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.editor-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s2);
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: var(--s1);
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
+.editor-row-open {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 44px;
+  padding: 0 var(--s3);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-cell);
+  text-align: left;
+  cursor: pointer;
+}
+
+.editor-row-open:active {
+  background: var(--bg-raised);
+}
+
+.editor-row-name {
+  font-size: 15px;
+}
+
+/* Rows that navigate get a trailing chevron; toggle rows never do. */
+.editor-row-open::after {
+  content: "\203A";
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-faint);
+  margin-left: var(--s2);
+}
+
+.editor-row-tag {
+  margin-left: auto;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+.editor-row-move {
+  width: 44px;
+  min-height: 44px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-cell);
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.editor-row-move:active {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.archived-row button {
+  min-height: 44px;
+  padding: 0 var(--s4);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* ---------- Habit create/edit screen ---------- */
+
+/* Screen header: quiet back affordance above a leading large title. */
+.screen-header {
+  margin-bottom: 20px;
+}
+
+.screen-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--s2);
+  margin-left: calc(-1 * var(--s2)); /* optical: chevron aligns to the content edge */
+  background: transparent;
+  border: none;
+  border-radius: var(--r-control);
+  color: var(--text-dim);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.screen-back::before {
+  content: "\2039";
+  font-size: 22px;
+  line-height: 1;
+  margin-right: var(--s1);
+}
+
+.screen-header .view-title {
+  margin: var(--s1) 0 0;
+}
+
+/* Type card-picker: three stacked selectable cards, radio semantics. */
+.type-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.type-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s1);
+  width: 100%;
+  padding: var(--s3) var(--s4);
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
+.type-card[aria-checked="true"] {
+  border-color: var(--accent);
+}
+
+.type-card-name {
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Leading check glyph: slot is always reserved so selection never reflows. */
+.type-card-name::before {
+  content: "\2713";
+  width: 20px;
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0;
+}
+
+.type-card[aria-checked="true"] .type-card-name::before {
+  opacity: 1;
+}
+
+.type-card-desc {
+  font-size: 13px;
+  line-height: 1.38;
+  color: var(--text-dim);
+  padding-left: 20px; /* optical: aligns with the name text after the glyph slot */
+}
+
+.type-card[disabled] {
+  cursor: default;
+  color: var(--text-dim);
+}
+
+.type-card.current::after {
+  content: "current";
+  position: absolute;
+  top: var(--s3);
+  right: var(--s4);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+/* Static type row (edit mode). */
+.type-static {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  min-height: 44px;
+}
+
+.type-static-current {
+  font-size: 15px;
+}
+
+.quiet-btn {
+  background: transparent;
+  border: none;
+  border-radius: var(--r-control);
+  color: var(--text-dim);
+  font-size: 15px;
+  min-height: 44px;
+  padding: 0 var(--s2);
+  margin-right: calc(-1 * var(--s2)); /* optical: text aligns to the row edge */
+  cursor: pointer;
+}
+
+/* Stepper: explicit − / + control, no keyboard needed. */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.stepper-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
+.stepper-btn[disabled] {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.stepper-value {
+  min-width: 40px;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Primary tier: exactly one per screen (create's "Add Habit"). */
+.primary-action {
   min-height: var(--tap-min);
+  width: 100%;
+  margin-top: var(--s2);
   background: var(--accent-dim);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
   color: var(--text);
   font-weight: 600;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
+#habit-screen-archive,
+#habit-screen-remove,
+#change-type-confirm {
+  min-height: var(--tap-min);
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
+/* Caution outline, never filled: visually distinct, not alarming. */
+#habit-screen-remove {
+  color: var(--caution);
+  border-color: var(--caution);
+}
+
+#change-type-confirm[disabled] {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.editor-subsection summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.editor-subsection summary::-webkit-details-marker {
+  display: none;
+}
+
+.editor-subsection summary::before {
+  content: "\25B8  ";
+}
+
+.editor-subsection[open] summary::before {
+  content: "\25BE  ";
+}
+
+.archived-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.archived-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 48px;
+  padding: 0 var(--s4);
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text-dim);
+  box-shadow: inset 0 1px 0 var(--edge);
+}
+
+/* Neutral tier (design-system button rules): Export, Import, and New habit
+   are not save-equivalents, so they never get the accent fill. */
+#export-btn,
+#import-btn,
+#new-habit-btn {
+  min-height: var(--tap-min);
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--edge);
 }
 
 /* ---------- Bottom nav ---------- */
@@ -692,11 +1152,26 @@ summary:focus-visible {
 .nav-btn {
   flex: 1;
   min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s1);
+  padding: var(--s2) 0;
   background: transparent;
   border: none;
   color: var(--text-dim);
   font-size: 13px;
   cursor: pointer;
+}
+
+.nav-btn svg {
+  display: block;
+}
+
+.nav-label {
+  font-size: 13px;
+  line-height: 1;
 }
 
 .nav-btn.active {
@@ -723,5 +1198,19 @@ summary:focus-visible {
     max-width: 480px;
     border-left: 1px solid var(--border);
     border-right: 1px solid var(--border);
+  }
+}
+
+/* Respect the OS "reduce motion" setting: no entrance animations, no press
+   scaling. */
+@media (prefers-reduced-motion: reduce) {
+  .view.active,
+  #view-habit.view.active {
+    animation: none;
+  }
+
+  button:active:not(.habit-row),
+  .habit-row:active {
+    transform: none;
   }
 }

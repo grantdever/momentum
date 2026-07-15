@@ -1,30 +1,31 @@
 // Pure streak/stat derivation from entries. No side effects, no I/O.
+// Config-driven: every function takes the `habits` array (+ `coreSlack`
+// where a daily threshold is judged) instead of hardcoded habit lists.
 import { addDays, weekStart } from './dates.js';
+import { activeHabitsOn, activeCoresOn, effectiveThreshold } from './habits.js';
 
-export const CORE_HABITS = ['alcoholFree', 'cookedAtHome', 'sleptOnTime', 'workSprint', 'walked'];
-
-export const ALL_HABITS = [
-  'trained',
-  'alcoholFree',
-  'cookedAtHome',
-  'sleptOnTime',
-  'workSprint',
-  'walked',
-  'bonusReading',
-  'bonusNoGaming',
-];
-
-export function coreCount(entry) {
+// Count of that day's active core habits hit on `entry` (raw, unjudged).
+export function coreCount(entry, habits, dateIso) {
   if (!entry) return 0;
   let n = 0;
-  for (const h of CORE_HABITS) {
-    if (entry[h]) n++;
+  for (const h of activeCoresOn(habits, dateIso)) {
+    if (entry[h.id]) n++;
   }
   return n;
 }
 
-function hits(entry, threshold) {
-  return !!entry && !entry.offDay && coreCount(entry) >= threshold;
+// A day "rests" (doesn't count, doesn't break) when it's an explicit off-day
+// or when zero cores were active that day [R1] — the zero-active-cores rule.
+function restsOn(entry, habits, dateIso) {
+  if (entry.offDay) return true;
+  return activeCoresOn(habits, dateIso).length === 0;
+}
+
+function coreHit(entry, habits, coreSlack, dateIso) {
+  if (!entry || entry.offDay) return false;
+  const threshold = effectiveThreshold(habits, coreSlack, dateIso);
+  if (threshold === null) return false; // zero active cores: never a "hit", see restsOn
+  return coreCount(entry, habits, dateIso) >= threshold;
 }
 
 function earliestDate(entries) {
@@ -33,15 +34,15 @@ function earliestDate(entries) {
   return keys.reduce((min, k) => (k < min ? k : min), keys[0]);
 }
 
-export function dailyStreak(entries, threshold, todayIso) {
+export function dailyStreak(entries, habits, coreSlack, todayIso) {
   const earliest = earliestDate(entries);
   let streak = 0;
 
   const todayEntry = entries[todayIso];
-  if (todayEntry && !todayEntry.offDay && hits(todayEntry, threshold)) {
+  if (todayEntry && coreHit(todayEntry, habits, coreSlack, todayIso)) {
     streak += 1;
   }
-  // today missing, offDay, or below threshold: neither counts nor breaks (grace).
+  // today missing, offDay, zero-active-cores, or below threshold: grace.
 
   if (earliest === null) {
     return streak;
@@ -53,11 +54,11 @@ export function dailyStreak(entries, threshold, todayIso) {
     if (!e) {
       break; // gap breaks the chain
     }
-    if (e.offDay) {
+    if (restsOn(e, habits, cursor)) {
       cursor = addDays(cursor, -1);
-      continue; // skip, doesn't count, doesn't break
+      continue; // off-day or zero active cores: skip, doesn't count, doesn't break
     }
-    if (hits(e, threshold)) {
+    if (coreHit(e, habits, coreSlack, cursor)) {
       streak += 1;
       cursor = addDays(cursor, -1);
       continue;
@@ -68,32 +69,51 @@ export function dailyStreak(entries, threshold, todayIso) {
   return streak;
 }
 
-function trainedInWeek(entries, monday) {
+function habitFirstFrom(habit) {
+  const first = habit.active[0];
+  return first ? first.from : null;
+}
+
+function laterDate(a, b) {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a > b ? a : b;
+}
+
+function habitCountInWeek(entries, habit, start) {
   let count = 0;
   for (let i = 0; i < 7; i++) {
-    const d = addDays(monday, i);
-    if (entries[d]?.trained === true) count++;
+    const d = addDays(start, i);
+    if (entries[d]?.[habit.id] === true) count++;
   }
   return count;
 }
 
-export function weeklyTrainingStreak(entries, target, todayIso) {
-  const earliest = earliestDate(entries);
+// Generalized per-habit weekly-quota streak (any habit with `weeklyTarget`).
+// Bounded at the later of the earliest entry and the habit's first `from`
+// date [R9] — otherwise a habit added mid-history would walk back into weeks
+// before it existed and report a broken streak on day one.
+export function weeklyQuotaStreak(entries, habit, todayIso, weekStartsOn = 'monday') {
+  const target = habit.weeklyTarget;
   let streak = 0;
 
-  let w = weekStart(todayIso);
-  if (trainedInWeek(entries, w) >= target) {
+  let w = weekStart(todayIso, weekStartsOn);
+  if (habitCountInWeek(entries, habit, w) >= target) {
     streak += 1;
   }
 
+  const earliest = earliestDate(entries);
   if (earliest === null) {
     return streak;
   }
 
-  const earliestWeek = weekStart(earliest);
+  const habitFrom = habitFirstFrom(habit);
+  const lowerBound = habitFrom === null ? earliest : laterDate(earliest, habitFrom);
+  const boundWeek = weekStart(lowerBound, weekStartsOn);
+
   w = addDays(w, -7);
-  while (w >= earliestWeek) {
-    if (trainedInWeek(entries, w) >= target) {
+  while (w >= boundWeek) {
+    if (habitCountInWeek(entries, habit, w) >= target) {
       streak += 1;
       w = addDays(w, -7);
       continue;
@@ -104,20 +124,20 @@ export function weeklyTrainingStreak(entries, target, todayIso) {
   return streak;
 }
 
-export function weekProgress(entries, todayIso) {
-  const monday = weekStart(todayIso);
+export function weeklyQuotaProgress(entries, habit, todayIso, weekStartsOn = 'monday') {
+  const start = weekStart(todayIso, weekStartsOn);
   const days = [];
   let count = 0;
   for (let i = 0; i < 7; i++) {
-    const d = addDays(monday, i);
-    const trained = entries[d]?.trained === true;
-    if (trained) count++;
-    days.push(trained);
+    const d = addDays(start, i);
+    const hit = entries[d]?.[habit.id] === true;
+    if (hit) count++;
+    days.push(hit);
   }
   return { count, days };
 }
 
-export function cumulativeStats(entries, threshold, todayIso) {
+export function cumulativeStats(entries, habits, coreSlack, todayIso) {
   const keys = Object.keys(entries);
   let totalLogged = 0;
   let totalCoreHit = 0;
@@ -127,14 +147,15 @@ export function cumulativeStats(entries, threshold, todayIso) {
   for (const k of keys) {
     const e = entries[k];
     totalLogged++;
-    if (!e.offDay && coreCount(e) >= threshold) totalCoreHit++;
+    if (coreHit(e, habits, coreSlack, k)) totalCoreHit++;
     if (e.trained) totalTrained++;
     if (e.offDay) offDayCount++;
   }
 
   let last30Hit = 0;
   for (let i = 0; i < 30; i++) {
-    if (hits(entries[addDays(todayIso, -i)], threshold)) last30Hit++;
+    const d = addDays(todayIso, -i);
+    if (coreHit(entries[d], habits, coreSlack, d)) last30Hit++;
   }
 
   const earliest = earliestDate(entries);
@@ -146,9 +167,9 @@ export function cumulativeStats(entries, threshold, todayIso) {
       const e = entries[cursor];
       if (!e) {
         run = 0;
-      } else if (e.offDay) {
+      } else if (restsOn(e, habits, cursor)) {
         // skip, run survives
-      } else if (hits(e, threshold)) {
+      } else if (coreHit(e, habits, coreSlack, cursor)) {
         run += 1;
         if (run > bestStreak) bestStreak = run;
       } else {
@@ -161,52 +182,83 @@ export function cumulativeStats(entries, threshold, todayIso) {
   return { totalLogged, totalCoreHit, totalTrained, bestStreak, offDayCount, last30Hit };
 }
 
-export function habitCounts(entries) {
+export function habitCounts(entries, habits) {
   const counts = {};
-  for (const h of ALL_HABITS) counts[h] = 0;
+  for (const h of habits) counts[h.id] = 0;
   for (const k of Object.keys(entries)) {
     const e = entries[k];
-    for (const h of ALL_HABITS) {
-      if (e[h]) counts[h]++;
+    for (const h of habits) {
+      if (e[h.id]) counts[h.id]++;
     }
   }
   return counts;
 }
 
-export function daySummary(entries, dateIso) {
+export function daySummary(entries, habits, dateIso) {
   const e = entries[dateIso];
   return {
     logged: !!e,
-    count: e ? coreCount(e) : 0,
+    count: e ? coreCount(e, habits, dateIso) : 0,
+    coreTotal: activeCoresOn(habits, dateIso).length,
     trained: !!e?.trained,
     offDay: !!e?.offDay,
   };
 }
 
-export function historyWeeks(entries, threshold, todayIso, weeks = 5) {
-  const currentMonday = weekStart(todayIso);
+// True when any entry marks the habit done. Entries stamped `false` by
+// createEmptyEntry (the habit existed that day but was never completed) are
+// NOT history — only a true value is. Gates the editor's Remove action.
+export function habitHasHistory(entries, habitId) {
+  for (const k of Object.keys(entries)) {
+    if (entries[k][habitId] === true) return true;
+  }
+  return false;
+}
+
+// True when any weekly-quota habit active on that day was done — drives the
+// history dot marker. With the default single `trained` habit this reduces
+// exactly to the old entry.trained check.
+export function weeklyDoneOn(entry, habits, dateIso) {
+  if (!entry) return false;
+  for (const h of activeHabitsOn(habits, dateIso)) {
+    if (h.cadence === 'weekly-quota' && entry[h.id] === true) return true;
+  }
+  return false;
+}
+
+// Maps a day's core hits onto the 6-step history color ramp (i0..i5) as a
+// ratio of that day's active core count, so intensity stays meaningful when
+// the denominator isn't 5. For a 5-core config this is the identity (k -> k).
+export function intensityLevel(count, coreTotal) {
+  if (count <= 0 || coreTotal <= 0) return 0;
+  return Math.min(5, Math.max(1, Math.round((5 * count) / coreTotal)));
+}
+
+export function historyWeeks(entries, habits, todayIso, weeks = 5, weekStartsOn = 'monday') {
+  const currentStart = weekStart(todayIso, weekStartsOn);
   const result = [];
   for (let w = weeks - 1; w >= 0; w--) {
-    const monday = addDays(currentMonday, -7 * w);
+    const start = addDays(currentStart, -7 * w);
     const days = [];
     for (let i = 0; i < 7; i++) {
-      const d = addDays(monday, i);
+      const d = addDays(start, i);
       const e = entries[d];
       days.push({
         date: d,
         logged: !!e,
-        count: e ? coreCount(e) : 0,
+        count: e ? coreCount(e, habits, d) : 0,
+        coreTotal: activeCoresOn(habits, d).length,
         offDay: !!e?.offDay,
-        trained: !!e?.trained,
+        weeklyDone: weeklyDoneOn(e, habits, d),
         future: d > todayIso,
       });
     }
-    result.push({ monday, days });
+    result.push({ start, days });
   }
   return result;
 }
 
-export function historyGrid(entries, threshold, todayIso, n = 30) {
+export function historyGrid(entries, habits, todayIso, n = 30) {
   const start = addDays(todayIso, -(n - 1));
   const grid = [];
   for (let i = 0; i < n; i++) {
@@ -215,9 +267,10 @@ export function historyGrid(entries, threshold, todayIso, n = 30) {
     grid.push({
       date: d,
       logged: !!e,
-      count: e ? coreCount(e) : 0,
+      count: e ? coreCount(e, habits, d) : 0,
+      coreTotal: activeCoresOn(habits, d).length,
       offDay: !!e?.offDay,
-      trained: !!e?.trained,
+      weeklyDone: weeklyDoneOn(e, habits, d),
     });
   }
   return grid;

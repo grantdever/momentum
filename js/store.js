@@ -1,35 +1,13 @@
 // localStorage persistence. This is the only file in js/ that touches
 // localStorage, window, or other browser globals.
 
+import { migrateSettings, defaultSettings } from './migrate.js';
+
 const ENTRIES_KEY = 'momentum.entries';
 const SETTINGS_KEY = 'momentum.settings';
 const LAST_OPEN_KEY = 'momentum.lastOpen';
 
-export const DEFAULT_SETTINGS = {
-  coreThreshold: 4,
-  sleepTargetTime: '22:00',
-  gymTargetPerWeek: 3,
-  weekStartsOn: 'monday',
-  holdToComplete: false,
-  github: { enabled: false, owner: '', repo: '', path: 'data.json', token: '' },
-};
-
-function deepMerge(defaults, overrides) {
-  if (typeof defaults !== 'object' || defaults === null || Array.isArray(defaults)) {
-    return overrides === undefined ? defaults : overrides;
-  }
-  const out = { ...defaults };
-  if (typeof overrides === 'object' && overrides !== null && !Array.isArray(overrides)) {
-    for (const key of Object.keys(overrides)) {
-      if (key in defaults) {
-        out[key] = deepMerge(defaults[key], overrides[key]);
-      } else {
-        out[key] = overrides[key];
-      }
-    }
-  }
-  return out;
-}
+export const DEFAULT_SETTINGS = defaultSettings();
 
 export function loadEntries() {
   try {
@@ -48,17 +26,19 @@ export function saveEntries(entries) {
 }
 
 export function loadSettings() {
+  let raw = {};
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS, github: { ...DEFAULT_SETTINGS.github } };
-    const parsed = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) {
-      return { ...DEFAULT_SETTINGS, github: { ...DEFAULT_SETTINGS.github } };
+    const stored = localStorage.getItem(SETTINGS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (typeof parsed === 'object' && parsed !== null) raw = parsed;
     }
-    return deepMerge(DEFAULT_SETTINGS, parsed);
   } catch {
-    return { ...DEFAULT_SETTINGS, github: { ...DEFAULT_SETTINGS.github } };
+    raw = {};
   }
+  const { settings, migrated } = migrateSettings(raw);
+  if (migrated) saveSettings(settings);
+  return settings;
 }
 
 export function saveSettings(settings) {

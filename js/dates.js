@@ -19,10 +19,16 @@ export function addDays(iso, n) {
   return formatLocal(dt);
 }
 
-export function weekStart(iso) {
+export const WEEK_STARTS = ['monday', 'sunday', 'saturday'];
+
+// getDay() indices (0 = Sunday) for each supported week start.
+const START_DAY_INDEX = { monday: 1, sunday: 0, saturday: 6 };
+
+export function weekStart(iso, weekStartsOn = 'monday') {
   const [y, m, d] = iso.split('-').map(Number);
   const dt = new Date(y, m - 1, d);
-  const offset = (dt.getDay() + 6) % 7; // Monday = 0 ... Sunday = 6
+  const startDay = START_DAY_INDEX[weekStartsOn] ?? START_DAY_INDEX.monday;
+  const offset = (dt.getDay() - startDay + 7) % 7; // days since the week started
   dt.setDate(dt.getDate() - offset);
   return formatLocal(dt);
 }
