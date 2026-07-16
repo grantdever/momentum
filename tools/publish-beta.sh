@@ -19,7 +19,7 @@ trap cleanup EXIT
 git -C "$REPO_ROOT" worktree add --detach "$TMP" "$BRANCH" >/dev/null
 
 sed -i '' 's|<title>Honest Streaks</title>|<title>Honest Streaks β</title>|' "$TMP/index.html"
-sed -i '' 's|name="apple-mobile-web-app-title" content="Honest"|name="apple-mobile-web-app-title" content="Honest β"|' "$TMP/index.html"
+sed -i '' 's|name="apple-mobile-web-app-title" content="Honest Streaks"|name="apple-mobile-web-app-title" content="Honest β"|' "$TMP/index.html"
 sed -i '' 's|"name": "Honest Streaks"|"name": "Honest Streaks β"|; s|"short_name": "Honest"|"short_name": "Honest β"|' "$TMP/manifest.webmanifest"
 # Include a publish timestamp so re-publishing the same commit still busts
 # the service-worker cache on devices that already installed the prior build.
