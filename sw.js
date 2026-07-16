@@ -1,5 +1,5 @@
 // Honest Streaks service worker — minimal versioned cache-first strategy.
-const CACHE = 'momentum-v9';
+const CACHE = 'honest-streaks-v10';
 
 const ASSETS = [
   './',
