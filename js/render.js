@@ -1,4 +1,4 @@
-// All DOM painting for Momentum. No event listeners live here — app.js owns
+// All DOM painting for Honest Streaks. No event listeners live here — app.js owns
 // wiring. This module only reads state and streaks.js and writes to the DOM
 // ids/attributes defined in index.html.
 

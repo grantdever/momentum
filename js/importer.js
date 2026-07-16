@@ -1,4 +1,4 @@
-// Pure JSON-import validation for restoring a Momentum export. No DOM, no
+// Pure JSON-import validation for restoring an Honest Streaks export. No DOM, no
 // storage, no fetch. Entries only — the export's settings field (which can
 // carry a GitHub token) is never read here, so an import can never clobber
 // sync configuration.
@@ -18,7 +18,7 @@ export function parseImport(jsonString) {
   }
 
   if (!isPlainObject(parsed) || !isPlainObject(parsed.entries)) {
-    return { error: "That file doesn't look like a Momentum export." };
+    return { error: "That file doesn't look like an Honest Streaks export." };
   }
 
   const entries = {};

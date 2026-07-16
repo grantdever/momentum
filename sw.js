@@ -1,4 +1,4 @@
-// Momentum service worker — minimal versioned cache-first strategy.
+// Honest Streaks service worker — minimal versioned cache-first strategy.
 const CACHE = 'momentum-v9';
 
 const ASSETS = [

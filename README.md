@@ -1,4 +1,4 @@
-# Momentum
+# Honest Streaks
 
 A personal daily habit tracker, installed as a home-screen web app on iPhone. It's a single-screen, offline-capable Progressive Web App — no accounts, no backend, no tracking. Your data lives in your browser's local storage, with an optional GitHub sync for backup and multi-device use.
 

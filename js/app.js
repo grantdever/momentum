@@ -1,4 +1,4 @@
-// Bootstrap and event wiring for Momentum. localStorage is the source of
+// Bootstrap and event wiring for Honest Streaks. localStorage is the source of
 // truth for the working session; GitHub sync (if enabled) layers on top.
 
 import { todayISO, addDays, WEEK_STARTS } from './dates.js';
@@ -629,7 +629,7 @@ function init() {
 
   document.getElementById('export-btn').addEventListener('click', async () => {
     const json = exportString(state.entries, state.settings);
-    const filename = `momentum-export-${todayISO()}.json`;
+    const filename = `honest-streaks-export-${todayISO()}.json`;
     // Standalone iOS web apps handle the share sheet far more reliably than
     // anchor downloads, so prefer it when file sharing is available.
     const file = new File([json], filename, { type: 'application/json' });

@@ -1,18 +1,19 @@
-/* Momentum — dark, calm, minimal. A tool, not a game. */
+/* Honest Streaks — dark, calm, minimal. A tool, not a game. */
 
 :root {
-  /* Surface ramp — elevation is lightness + hairline + inset edge, never drop shadows. */
-  --bg: #0b0f14;
-  --bg-raised: #161d27;
-  --bg-row: #1b2530;
-  --bg-lift: #232f3d;
-  --border: #2a3441;
-  --edge: rgba(255, 255, 255, 0.04);
-  --text: #eef3f8;
-  --text-dim: rgba(238, 243, 248, 0.62);
-  --text-faint: rgba(238, 243, 248, 0.40);
-  --accent: #2fb8a6;
-  --accent-dim: #1d5f57;
+  /* Surface ramp — LEDGER palette: warm umber/brass. Elevation is lightness +
+     hairline + inset edge, never drop shadows. */
+  --bg: #14100c;
+  --bg-raised: #1e1812;
+  --bg-row: #262019;
+  --bg-lift: #2f2820;
+  --border: #38301f;
+  --edge: rgba(255, 244, 224, 0.05);
+  --text: #f1e9dc;
+  --text-dim: rgba(241, 233, 220, 0.62);
+  --text-faint: rgba(241, 233, 220, 0.40);
+  --accent: #c29a58;
+  --accent-dim: #6b5427;
   --caution: #c96a4e;      /* terracotta: Remove affordance + sync banner only, never failure */
   --danger: var(--caution); /* legacy alias — new code says --caution */
 
@@ -50,6 +51,13 @@ html, body {
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
   -webkit-tap-highlight-color: transparent;
+  /* The root never scrolls — #app is the scroller. iOS moves fixed elements
+     against a scrolling root (toolbar collapse, keyboard viewport leftovers,
+     rubber-band), which exposed content below the nav (Grant, on-device,
+     2026-07-16). A static root gives those bugs nothing to act on. */
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior-y: none;
 }
 
 body {
@@ -91,8 +99,10 @@ input[type="number"]::-webkit-outer-spin-button {
 #app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding-top: env(safe-area-inset-top);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
@@ -571,10 +581,10 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .history-grid .cell.i0 { background: var(--bg-row); }
-.history-grid .cell.i1 { background: #133d38; }
-.history-grid .cell.i2 { background: #175a4f; }
-.history-grid .cell.i3 { background: #1c8272; }
-.history-grid .cell.i4 { background: #23a892; }
+.history-grid .cell.i1 { background: #3a2d16; }
+.history-grid .cell.i2 { background: #5a451f; }
+.history-grid .cell.i3 { background: #7f622c; }
+.history-grid .cell.i4 { background: #a37e3f; }
 .history-grid .cell.i5 { background: var(--accent); }
 
 .history-grid .cell.off {
@@ -629,10 +639,10 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .legend-swatch.i0 { background: var(--bg-row); }
-.legend-swatch.i1 { background: #133d38; }
-.legend-swatch.i2 { background: #175a4f; }
-.legend-swatch.i3 { background: #1c8272; }
-.legend-swatch.i4 { background: #23a892; }
+.legend-swatch.i1 { background: #3a2d16; }
+.legend-swatch.i2 { background: #5a451f; }
+.legend-swatch.i3 { background: #7f622c; }
+.legend-swatch.i4 { background: #a37e3f; }
 .legend-swatch.i5 { background: var(--accent); }
 
 .legend-swatch.off {
@@ -780,7 +790,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .settings-group select {
   min-height: 48px;
   background-color: var(--bg-row);
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20viewBox='0%200%2016%2016'%20fill='none'%3E%3Cpath%20d='M4%206l4%204%204-4'%20stroke='%23eef3f8'%20stroke-opacity='.62'%20stroke-width='1.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20viewBox='0%200%2016%2016'%20fill='none'%3E%3Cpath%20d='M4%206l4%204%204-4'%20stroke='%23f1e9dc'%20stroke-opacity='.62'%20stroke-width='1.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right var(--s3) center;
   border: 1px solid var(--border);
@@ -1149,6 +1159,18 @@ input[type="number"]::-webkit-outer-spin-button {
   z-index: 10;
 }
 
+/* Opaque apron below the bar: iOS rubber-band overscroll can shift fixed
+   elements mid-bounce, exposing page content beneath the nav. */
+.nav::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: -1px;
+  right: -1px;
+  height: 120px;
+  background: var(--bg-raised);
+}
+
 .nav-btn {
   flex: 1;
   min-height: 56px;
@@ -1187,7 +1209,6 @@ input[type="number"]::-webkit-outer-spin-button {
     margin: 0 auto;
     border-left: 1px solid var(--border);
     border-right: 1px solid var(--border);
-    min-height: 100vh;
   }
 
   .nav {
