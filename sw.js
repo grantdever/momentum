@@ -1,5 +1,5 @@
 // Honest Streaks service worker — minimal versioned cache-first strategy.
-const CACHE = 'honest-streaks-v10';
+const CACHE = 'honest-streaks-v11';
 
 const ASSETS = [
   './',
@@ -16,6 +16,7 @@ const ASSETS = [
   './js/habits.js',
   './js/migrate.js',
   './js/sync.js',
+  './js/gestures.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png'

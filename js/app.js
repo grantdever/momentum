@@ -32,6 +32,9 @@ import {
   setStatusListener,
   setRemoteUpdateListener,
 } from './sync.js';
+import { initGestures } from './gestures.js';
+
+const TABS = ['today', 'history', 'settings'];
 
 function createEmptyEntry(date, habits) {
   const entry = { date, note: '', offDay: false, updatedAt: new Date().toISOString() };
@@ -339,6 +342,21 @@ function init() {
     for (const navBtn of document.querySelectorAll('#nav [data-view]')) {
       navBtn.classList.toggle('active', navBtn.dataset.view === navView);
     }
+  }
+
+  // Swipe-driven tab change: same view switch as a nav tap, but the incoming
+  // view slides in from the side the finger travelled toward, so movement has
+  // direction. `dir` is +1 (rightward tabs) or -1 (leftward).
+  function goToTab(view, dir) {
+    const el = document.getElementById(`view-${view}`);
+    if (el) {
+      const cls = dir > 0 ? 'from-right' : 'from-left';
+      el.classList.remove('from-right', 'from-left');
+      el.classList.add(cls);
+      el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+    }
+    showView(view);
+    renderAll(state);
   }
 
   function openHabitScreen(screen) {
@@ -680,6 +698,19 @@ function init() {
     const total = Object.keys(result.entries).length;
     const skippedNote = result.skipped ? `, ${result.skipped} skipped` : '';
     setImportStatus(`Imported — ${total} days merged, ${updated} updated${skippedNote}`);
+  });
+
+  initGestures({
+    root: document.getElementById('app'),
+    canSwipeTabs: () => state.habitScreen == null && TABS.includes(state.view),
+    currentTab: () => state.view,
+    goToTab,
+    sheet: {
+      el: document.getElementById('view-habit'),
+      scroller: document.getElementById('app'),
+      isOpen: () => state.habitScreen != null,
+      dismiss: closeHabitScreen,
+    },
   });
 
   renderAll(state);

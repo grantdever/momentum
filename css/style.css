@@ -137,6 +137,19 @@ input[type="number"]::-webkit-outer-spin-button {
   animation: habit-enter 240ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Swipe-driven tab change: the incoming view enters from the side the finger
+   travelled toward (content follows the finger), replacing the plain rise. */
+@keyframes view-slide-from-right {
+  from { opacity: 0.5; transform: translateX(26px); }
+  to   { opacity: 1;   transform: translateX(0); }
+}
+@keyframes view-slide-from-left {
+  from { opacity: 0.5; transform: translateX(-26px); }
+  to   { opacity: 1;   transform: translateX(0); }
+}
+.view.active.from-right { animation: view-slide-from-right 220ms cubic-bezier(0.32, 0.72, 0, 1); }
+.view.active.from-left  { animation: view-slide-from-left  220ms cubic-bezier(0.32, 0.72, 0, 1); }
+
 /* ---------- Today header ---------- */
 
 /* The core streak is the hero: full-width card on top; weekly blocks stack
@@ -1226,7 +1239,9 @@ input[type="number"]::-webkit-outer-spin-button {
    scaling. */
 @media (prefers-reduced-motion: reduce) {
   .view.active,
-  #view-habit.view.active {
+  #view-habit.view.active,
+  .view.active.from-right,
+  .view.active.from-left {
     animation: none;
   }
 
