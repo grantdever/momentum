@@ -398,7 +398,18 @@ function init() {
     const cell = e.target.closest('[data-detail]');
     if (!cell) return;
     const detailEl = document.getElementById('grid-detail');
-    if (detailEl) detailEl.textContent = cell.dataset.detail;
+    if (!detailEl) return;
+    detailEl.textContent = '';
+    const summary = document.createElement('span');
+    summary.className = 'grid-detail-summary';
+    summary.textContent = cell.dataset.detail;
+    detailEl.appendChild(summary);
+    if (cell.dataset.note) {
+      const note = document.createElement('span');
+      note.className = 'grid-detail-note';
+      note.textContent = cell.dataset.note;
+      detailEl.appendChild(note);
+    }
   });
 
   document.getElementById('banner').addEventListener('click', (e) => {

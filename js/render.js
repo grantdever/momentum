@@ -385,8 +385,11 @@ export function renderHistory(state) {
       ].filter(Boolean);
       const detail = `${monthDay(cell.date)}: ${parts.join(', ')}`;
       div.dataset.detail = detail;
+      // Surface the day's note so it has a way back out (it only ever went in).
+      const note = state.entries[cell.date]?.note?.trim();
+      if (note) div.dataset.note = note;
       div.setAttribute('role', 'img');
-      div.setAttribute('aria-label', detail);
+      div.setAttribute('aria-label', note ? `${detail}. Note: ${note}` : detail);
       grid.appendChild(div);
     }
   }

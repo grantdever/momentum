@@ -610,6 +610,17 @@ input[type="number"]::-webkit-outer-spin-button {
   margin-bottom: var(--s4);
 }
 
+/* The day's note, surfaced under the tap summary — quiet and set apart so it
+   reads as a quotation, not another stat. */
+.grid-detail-note {
+  display: block;
+  margin-top: var(--s1);
+  color: var(--text-faint);
+  font-style: italic;
+}
+.grid-detail-note::before { content: "\201C"; }
+.grid-detail-note::after  { content: "\201D"; }
+
 .history-grid .cell.i0 { background: var(--bg-row); }
 .history-grid .cell.i1 { background: #3a2d16; }
 .history-grid .cell.i2 { background: #5a451f; }
