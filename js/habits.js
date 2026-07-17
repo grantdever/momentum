@@ -73,6 +73,54 @@ export function removeHabit(habits, id) {
   return habits.filter((h) => h.id !== id);
 }
 
+// Validate a habit's optional implementation-intention plan. Returns
+// { anchor, coping? } with trimmed, length-capped strings, or null when the
+// anchor is missing or blank — a plan without a cue is just a wish. A bad
+// coping value drops only the coping line, never the whole plan.
+export const PLAN_MAX_LEN = 120;
+
+function cleanPlanText(value) {
+  // trim -> cap -> trim again so the result is stable under re-validation
+  // (a cap that lands on a space must not reopen the trim on the next pass).
+  return value.trim().slice(0, PLAN_MAX_LEN).trim();
+}
+
+export function validatePlan(raw) {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  if (typeof raw.anchor !== 'string') return null;
+  const anchor = cleanPlanText(raw.anchor);
+  if (!anchor) return null;
+  const plan = { anchor };
+  if (typeof raw.coping === 'string') {
+    const coping = cleanPlanText(raw.coping);
+    if (coping) plan.coping = coping;
+  }
+  return plan;
+}
+
+// Interval rule for wizard-created habits. On a fresh install there is no
+// history to protect, and an open interval avoids the weekly-quota lower
+// bound edge on day one — so every habit made during a fresh-install wizard
+// session opens unbounded. On existing data (the #setup route), activation
+// starts today so history stays untouched, same as the create screen.
+export function wizardInterval(freshSession, todayIso) {
+  return freshSession ? [{ from: null, to: null }] : [{ from: todayIso, to: null }];
+}
+
+// Build a new habit object: id minted against the full stored array, weekly
+// target clamped (weekly-quota only), plan validated and attached only when
+// well-formed. The single shape producer for both the create screen and the
+// setup wizard.
+export function createHabit({ label, cadence, weeklyTarget, plan, active, habits }) {
+  const habit = { id: generateHabitId(label, habits), label, cadence, active };
+  if (cadence === 'weekly-quota') {
+    habit.weeklyTarget = clampWeeklyTarget(weeklyTarget) ?? 3;
+  }
+  const validPlan = validatePlan(plan);
+  if (validPlan) habit.plan = validPlan;
+  return habit;
+}
+
 // Editor/validation clamps. Both return null for non-numeric garbage so
 // callers can fall back to their own default; finite values are treated as
 // intent and clamped into range.

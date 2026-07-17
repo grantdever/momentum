@@ -1,7 +1,7 @@
 // localStorage persistence. This is the only file in js/ that touches
 // localStorage, window, or other browser globals.
 
-import { migrateSettings, defaultSettings } from './migrate.js';
+import { migrateSettings, defaultSettings, freshSettings } from './migrate.js';
 
 const ENTRIES_KEY = 'momentum.entries';
 const SETTINGS_KEY = 'momentum.settings';
@@ -25,7 +25,26 @@ export function saveEntries(entries) {
   localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
 }
 
+// Fresh install: NEITHER settings NOR entries key exists. Entries without
+// settings (or any settings blob at all) means real pre-existing data, which
+// must always take the migration path — never the wizard's empty config.
+export function isFreshInstall() {
+  try {
+    return localStorage.getItem(SETTINGS_KEY) === null && localStorage.getItem(ENTRIES_KEY) === null;
+  } catch {
+    return false;
+  }
+}
+
 export function loadSettings() {
+  // Fresh install: empty habits + the wizard pending, persisted immediately.
+  // The v1 legacy fabrication (Grant's 8 habits) must never run here — it is
+  // reserved for storage that actually holds legacy data.
+  if (isFreshInstall()) {
+    const settings = freshSettings();
+    saveSettings(settings);
+    return settings;
+  }
   let raw = {};
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);

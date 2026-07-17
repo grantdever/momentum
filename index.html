@@ -241,6 +241,19 @@
       <button type="button" id="change-type-confirm" disabled>Change type</button>
     </div>
 
+    <!-- Plan (implementation intention): edit mode only, auto-commits like
+         the other edit fields. One plan per habit; clearing the cue removes
+         the plan. The habit's label completes the "I will" half. -->
+    <div class="settings-group" id="habit-screen-plan-group">
+      <div class="group-title">Plan</div>
+      <label for="habit-screen-anchor">After I</label>
+      <input type="text" id="habit-screen-anchor" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="done" placeholder="pour my morning coffee">
+      <p class="setting-caption" id="habit-screen-plan-sentence" hidden></p>
+      <label for="habit-screen-coping">If I miss a day</label>
+      <input type="text" id="habit-screen-coping" autocomplete="off" autocapitalize="sentences" spellcheck="false" enterkeyhint="done" placeholder="I'll pick it up the next day — no penalty.">
+      <p class="setting-caption">A plan needs a cue — clearing “After I” removes it.</p>
+    </div>
+
     <div class="settings-group" id="habit-screen-archive-group">
       <button type="button" id="habit-screen-archive">Archive</button>
       <p class="setting-caption">Keeps its history — you can bring it back anytime.</p>
@@ -250,6 +263,106 @@
       <button type="button" id="habit-screen-remove">Remove</button>
       <p class="setting-caption">No days logged yet — removing leaves no trace.</p>
     </div>
+  </section>
+
+  <!-- First-run setup wizard. Not on the nav; opens on a fresh install
+       (settings.onboarding === 'pending') or via the #setup hash route.
+       Five steps in one view — step visibility is driven by state.wizard in
+       app.js; render.js paints. Every step is skippable; nothing here is
+       ever required. -->
+  <section id="view-onboarding" class="view">
+
+    <div data-wizard-step="1">
+      <p class="wizard-welcome"><strong>Honest Streaks</strong> counts the days you show up. Let's set up the first thing you want to keep showing up for.</p>
+      <button type="button" id="wizard-begin" class="primary-action">Begin</button>
+      <button type="button" id="wizard-skip" class="wizard-quiet">Skip setup</button>
+    </div>
+
+    <div data-wizard-step="2" hidden>
+      <h2 class="view-title">Make it a plan, not a wish.</h2>
+
+      <div class="settings-group" id="wizard-sentence">
+        <label for="wizard-anchor">After I</label>
+        <input type="text" id="wizard-anchor" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="next">
+        <div class="wizard-chips" role="group" aria-label="Common cues">
+          <button type="button" class="wizard-chip">pour my morning coffee</button>
+          <button type="button" class="wizard-chip">brush my teeth</button>
+          <button type="button" class="wizard-chip">sit down at my desk</button>
+          <button type="button" class="wizard-chip">eat lunch</button>
+          <button type="button" class="wizard-chip">close my laptop for the day</button>
+          <button type="button" class="wizard-chip">get into bed</button>
+        </div>
+        <label for="wizard-behavior">I will</label>
+        <input type="text" id="wizard-behavior" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="done" placeholder="read ten pages">
+        <p class="setting-caption">Small counts. The version you'd do on a bad day is the right size to start.</p>
+        <button type="button" id="wizard-coping-toggle" class="quiet-btn wizard-coping-toggle" aria-expanded="false">+ If I miss a day…</button>
+        <div id="wizard-coping-wrap" hidden>
+          <input type="text" id="wizard-coping" aria-label="If I miss a day" autocomplete="off" autocapitalize="sentences" spellcheck="false" enterkeyhint="done" value="I'll pick it up the next day — no penalty.">
+        </div>
+      </div>
+
+      <div class="settings-group" id="wizard-plain" hidden>
+        <label for="wizard-plain-label">Label</label>
+        <input type="text" id="wizard-plain-label" autocomplete="off" autocapitalize="sentences" spellcheck="false" enterkeyhint="done" placeholder="read ten pages">
+      </div>
+
+      <button type="button" id="wizard-continue-plan" class="primary-action">Continue</button>
+      <button type="button" id="wizard-swap" class="wizard-quiet">Just name it instead</button>
+    </div>
+
+    <div data-wizard-step="3" hidden>
+      <h2 class="view-title">Type</h2>
+
+      <div class="settings-group">
+        <label for="wizard-label">Label</label>
+        <input type="text" id="wizard-label" autocomplete="off" autocapitalize="sentences" spellcheck="false" enterkeyhint="done">
+
+        <label id="wizard-type-label">Type</label>
+        <div id="wizard-type-picker" class="type-picker" role="radiogroup" aria-labelledby="wizard-type-label">
+          <button type="button" class="type-card" role="radio" aria-checked="true" data-cadence="daily-core">
+            <span class="type-card-name">Daily core</span>
+            <span class="type-card-desc">Counts toward your daily goal.</span>
+          </button>
+          <button type="button" class="type-card" role="radio" aria-checked="false" data-cadence="weekly-quota">
+            <span class="type-card-name">Weekly</span>
+            <span class="type-card-desc">A target number of days each week, with its own streak.</span>
+          </button>
+          <button type="button" class="type-card" role="radio" aria-checked="false" data-cadence="bonus">
+            <span class="type-card-name">Bonus</span>
+            <span class="type-card-desc">Tracked when it happens. Never required.</span>
+          </button>
+        </div>
+
+        <label id="wizard-target-label" hidden>Days per week</label>
+        <div class="stepper" id="wizard-target-stepper" role="group" aria-labelledby="wizard-target-label" hidden>
+          <button type="button" class="stepper-btn" data-stepper="wizard-target" data-step="-1" aria-label="Fewer days per week">&#8722;</button>
+          <span class="stepper-value" id="wizard-target">3</span>
+          <button type="button" class="stepper-btn" data-stepper="wizard-target" data-step="1" aria-label="More days per week">+</button>
+        </div>
+      </div>
+
+      <button type="button" id="wizard-continue-type" class="primary-action">Continue</button>
+    </div>
+
+    <div data-wizard-step="4" hidden>
+      <h2 class="view-title">Start the count.</h2>
+      <p class="wizard-copy">Did this happen today?</p>
+      <button type="button" id="wizard-log-today" class="primary-action">Done today</button>
+      <button type="button" id="wizard-not-yet" class="wizard-quiet">Not yet — today's still open</button>
+    </div>
+
+    <div data-wizard-step="5" hidden>
+      <!-- The habit as it will appear on Today: a real row, preview only. -->
+      <div id="wizard-preview" class="habit-list wizard-preview" aria-label="Your habit on Today"></div>
+      <p class="wizard-copy" id="wizard-done-copy"></p>
+      <!-- Copy, labels, and button tiers set by render.js: Add another is
+           primary until the third habit, then Go to Today takes over. -->
+      <div id="wizard-done-actions" class="wizard-done-actions">
+        <button type="button" id="wizard-add-another"></button>
+        <button type="button" id="wizard-go-today"></button>
+      </div>
+    </div>
+
   </section>
 
   <nav id="nav" class="nav" role="tablist" aria-label="Views">

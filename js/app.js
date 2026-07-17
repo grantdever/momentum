@@ -18,13 +18,22 @@ import {
   unarchiveHabit,
   removeHabit,
   moveHabit,
-  generateHabitId,
   changeHabitType,
   clampWeeklyTarget,
+  createHabit,
+  wizardInterval,
+  validatePlan,
 } from './habits.js';
 import { mergeEntries } from './merge.js';
 import { parseImport, countUpdated } from './importer.js';
-import { renderAll, renderSyncStatus, renderHabitScreen, renderHabitScreenControls } from './render.js';
+import {
+  renderAll,
+  renderSyncStatus,
+  renderHabitScreen,
+  renderHabitScreenControls,
+  renderWizard,
+  renderWizardControls,
+} from './render.js';
 import {
   pull,
   pushNow,
@@ -68,6 +77,8 @@ function init() {
     // null | { mode: 'create', cadence, weeklyTarget }
     //      | { mode: 'edit', id, changeType: null | { cadence, weeklyTarget } }
     habitScreen: null,
+    // null | { freshSession, created, step: 1..5, habitId, draft }
+    wizard: null,
   };
 
   let syncSuspended = false;
@@ -378,6 +389,7 @@ function init() {
     const btn = e.target.closest('[data-view]');
     if (!btn) return;
     state.habitScreen = null; // leaving the habit screen discards unsaved edits
+    if (state.wizard) leaveWizard(); // #setup route: nav taps exit the wizard too
     showView(btn.dataset.view);
     renderAll(state);
   });
@@ -496,15 +508,13 @@ function init() {
       return;
     }
     const settings = state.settings;
-    const habit = {
-      id: generateHabitId(label, settings.habits),
+    const habit = createHabit({
       label,
       cadence: screen.cadence,
+      weeklyTarget: screen.weeklyTarget,
       active: [{ from: todayISO(), to: null }],
-    };
-    if (screen.cadence === 'weekly-quota') {
-      habit.weeklyTarget = clampWeeklyTarget(screen.weeklyTarget) ?? 3;
-    }
+      habits: settings.habits,
+    });
     settings.habits.push(habit);
     saveSettings(settings);
     closeHabitScreen();
@@ -525,11 +535,38 @@ function init() {
     if (value !== habit.label) {
       habit.label = value; // renames touch only the label — the id is permanent
       persistSettings();
+      renderHabitScreenControls(state); // the plan sentence renders the label
     }
   });
   habitLabelEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') habitLabelEl.blur(); // hardware keyboards commit like "done"
   });
+
+  // Plan auto-commit (edit mode): both fields commit on change, like the
+  // label. One plan per habit; an empty cue removes the plan (a plan without
+  // a cue is just a wish), and validatePlan trims, caps, and drops an empty
+  // coping line.
+  const planAnchorEl = document.getElementById('habit-screen-anchor');
+  const planCopingEl = document.getElementById('habit-screen-coping');
+
+  function commitPlanFromInputs() {
+    const habit = currentEditHabit();
+    if (!habit) return;
+    const plan = validatePlan({ anchor: planAnchorEl.value, coping: planCopingEl.value });
+    if (JSON.stringify(plan) !== JSON.stringify(habit.plan ?? null)) {
+      if (plan) habit.plan = plan;
+      else delete habit.plan;
+      persistSettings();
+    }
+    renderHabitScreenControls(state); // sentence caption reflects the plan
+  }
+
+  for (const el of [planAnchorEl, planCopingEl]) {
+    el.addEventListener('change', commitPlanFromInputs);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') el.blur();
+    });
+  }
 
   function performChangeType() {
     const screen = state.habitScreen;
@@ -645,6 +682,164 @@ function init() {
     }
   });
 
+  // --- Setup wizard --------------------------------------------------------
+  // Five steps in #view-onboarding, one view, step state in state.wizard.
+  // Opens on a fresh install (settings.onboarding === 'pending') with the nav
+  // hidden — there is nowhere else to go during first-run — or via the
+  // #setup hash route on live data, where nav taps exit like the habit
+  // screen. The pending flag clears when the wizard finishes or is skipped.
+
+  function newWizardDraft() {
+    return { plain: false, copingOpen: false, cadence: 'daily-core', weeklyTarget: 3, behavior: '', plan: null };
+  }
+
+  function openWizard(freshSession) {
+    state.wizard = { freshSession, created: 0, step: 1, habitId: null, draft: newWizardDraft() };
+    document.getElementById('nav').hidden = freshSession;
+    renderWizard(state);
+    showView('onboarding');
+  }
+
+  function clearSetupHash() {
+    if (window.location.hash === '#setup') {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }
+
+  // Shared exit: wizard state, hash, nav — without touching the pending flag
+  // (nav taps can only reach this on the #setup route, where no flag is set).
+  function leaveWizard() {
+    state.wizard = null;
+    clearSetupHash();
+    document.getElementById('nav').hidden = false;
+  }
+
+  // Finish or skip: additionally clears the pending flag and lands on Today.
+  function finishWizard() {
+    if (state.settings.onboarding) {
+      delete state.settings.onboarding;
+      saveSettings(state.settings);
+    }
+    leaveWizard();
+    showView('today');
+    renderAll(state);
+  }
+
+  function wizardGoStep(step) {
+    state.wizard.step = step;
+    renderWizard(state);
+  }
+
+  // Step 2 -> 3: read the sentence (or the plain label) into the draft.
+  // Sentence path: the cue is required — a plan without a cue is just a wish
+  // — and the behavior becomes the label. Missing fields just take focus.
+  function wizardReadPlan() {
+    const draft = state.wizard.draft;
+    if (draft.plain) {
+      const labelEl = document.getElementById('wizard-plain-label');
+      const label = labelEl.value.trim();
+      if (!label) {
+        labelEl.focus();
+        return;
+      }
+      draft.behavior = label;
+      draft.plan = null;
+    } else {
+      const anchorEl = document.getElementById('wizard-anchor');
+      const behaviorEl = document.getElementById('wizard-behavior');
+      const anchor = anchorEl.value.trim();
+      const behavior = behaviorEl.value.trim();
+      if (!anchor) {
+        anchorEl.focus();
+        return;
+      }
+      if (!behavior) {
+        behaviorEl.focus();
+        return;
+      }
+      // Coping is stored only when its line was opened (one tap accepts the
+      // default). validatePlan later trims, caps, and drops an empty coping.
+      const coping = draft.copingOpen ? document.getElementById('wizard-coping').value : '';
+      draft.behavior = behavior;
+      draft.plan = { anchor, coping };
+    }
+    wizardGoStep(3);
+  }
+
+  // Step 3 -> 4: create the habit for real — same shape the create screen
+  // makes, except the interval rule: fresh-install sessions get an open
+  // interval (no history to protect on day zero); #setup on existing data
+  // activates from today like any other new habit.
+  function wizardCreateHabit() {
+    const w = state.wizard;
+    const labelEl = document.getElementById('wizard-label');
+    const label = labelEl.value.trim();
+    if (!label) {
+      labelEl.focus();
+      return;
+    }
+    const habit = createHabit({
+      label,
+      cadence: w.draft.cadence,
+      weeklyTarget: w.draft.weeklyTarget,
+      plan: w.draft.plan,
+      active: wizardInterval(w.freshSession, todayISO()),
+      habits: state.settings.habits,
+    });
+    state.settings.habits.push(habit);
+    saveSettings(state.settings);
+    renderAll(state);
+    w.habitId = habit.id;
+    w.created += 1;
+    wizardGoStep(4);
+  }
+
+  document.getElementById('view-onboarding').addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn || !state.wizard) return;
+    const w = state.wizard;
+
+    if (btn.id === 'wizard-begin') {
+      wizardGoStep(2);
+    } else if (btn.id === 'wizard-skip') {
+      finishWizard();
+    } else if (btn.classList.contains('wizard-chip')) {
+      // Chips seed the anchor field; the text stays free to edit.
+      document.getElementById('wizard-anchor').value = btn.textContent;
+    } else if (btn.id === 'wizard-swap') {
+      w.draft.plain = !w.draft.plain;
+      renderWizardControls(state);
+    } else if (btn.id === 'wizard-coping-toggle') {
+      w.draft.copingOpen = !w.draft.copingOpen;
+      renderWizardControls(state);
+    } else if (btn.id === 'wizard-continue-plan') {
+      wizardReadPlan();
+    } else if (btn.closest('#wizard-type-picker')) {
+      const card = btn.closest('.type-card');
+      if (card) {
+        w.draft.cadence = card.dataset.cadence;
+        renderWizardControls(state);
+      }
+    } else if (btn.classList.contains('stepper-btn') && btn.dataset.stepper === 'wizard-target') {
+      w.draft.weeklyTarget = clampWeeklyTarget(w.draft.weeklyTarget + Number(btn.dataset.step)) ?? 3;
+      renderWizardControls(state);
+    } else if (btn.id === 'wizard-continue-type') {
+      wizardCreateHabit();
+    } else if (btn.id === 'wizard-log-today') {
+      // The same code path as a Today-card tap: real entry, real streak.
+      toggleHabit(todayISO(), w.habitId);
+      wizardGoStep(5);
+    } else if (btn.id === 'wizard-not-yet') {
+      wizardGoStep(5);
+    } else if (btn.id === 'wizard-add-another') {
+      w.draft = newWizardDraft();
+      w.habitId = null;
+      wizardGoStep(2);
+    } else if (btn.id === 'wizard-go-today') {
+      finishWizard();
+    }
+  });
+
   document.getElementById('export-btn').addEventListener('click', async () => {
     const json = exportString(state.entries, state.settings);
     const filename = `honest-streaks-export-${todayISO()}.json`;
@@ -716,6 +911,13 @@ function init() {
   renderAll(state);
   maybeShowMorningRibbon();
   syncOnLoadOrResume();
+
+  // First run (fresh install flagged by store.js) or the #setup test route:
+  // open the wizard. #setup operates on live config regardless of onboarding
+  // state; the hash is cleared on exit so relaunch doesn't re-trigger.
+  if (window.location.hash === '#setup' || state.settings.onboarding === 'pending') {
+    openWizard(state.settings.onboarding === 'pending');
+  }
 }
 
 if (typeof document !== 'undefined') {

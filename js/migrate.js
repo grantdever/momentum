@@ -2,7 +2,14 @@
 // coreSlack). Pure, total, and idempotent — see schema-design.md D6.
 
 import { WEEK_STARTS } from './dates.js';
-import { defaultHabits, LEGACY_CORE_HABITS, RESERVED_KEYS, clampSlack, clampWeeklyTarget } from './habits.js';
+import {
+  defaultHabits,
+  LEGACY_CORE_HABITS,
+  RESERVED_KEYS,
+  clampSlack,
+  clampWeeklyTarget,
+  validatePlan,
+} from './habits.js';
 
 const ALLOWED_WEEK_STARTS = WEEK_STARTS;
 const ALLOWED_CADENCES = ['daily-core', 'weekly-quota', 'bonus'];
@@ -19,6 +26,7 @@ const KNOWN_KEYS = [
   'sleepTargetTime',
   'holdToComplete',
   'github',
+  'onboarding',
 ];
 
 function isPlainObject(v) {
@@ -51,6 +59,14 @@ export function defaultSettings() {
     holdToComplete: false,
     github: { enabled: false, owner: '', repo: '', path: 'data.json', token: '' },
   };
+}
+
+// Fresh install (neither settings nor entries in storage): schema v2 with
+// zero habits and the wizard pending. Deliberately NOT reachable through
+// migrateSettings — only store.js's fresh-install detection calls this, so
+// any legacy blob still takes the v1 fabrication path byte-identically.
+export function freshSettings() {
+  return { ...defaultSettings(), habits: [], onboarding: 'pending' };
 }
 
 function unknownKeys(raw) {
@@ -99,11 +115,19 @@ function validateHabit(h) {
   if (h.cadence === 'weekly-quota') {
     habit.weeklyTarget = clampWeeklyTarget(h.weeklyTarget) ?? 3;
   }
+  // Optional implementation-intention plan: validated and passed through
+  // (this function otherwise strips unknown fields); malformed plans drop.
+  const plan = validatePlan(h.plan);
+  if (plan) habit.plan = plan;
   return habit;
 }
 
 function validateHabitsArray(rawHabits) {
   if (!Array.isArray(rawHabits)) return defaultHabits();
+  // An empty array is a legitimate v2 state (fresh install before the wizard
+  // adds anything) and must round-trip — the defaults fallback below is only
+  // for arrays whose every element failed validation.
+  if (rawHabits.length === 0) return [];
   const seen = new Set();
   const out = [];
   for (const h of rawHabits) {
@@ -145,7 +169,7 @@ function migrateFromV1(raw, defaults) {
 // corrupt values like coreThreshold: "banana" through untouched [R6]), still
 // preserving unknown keys.
 function revalidateV2(raw, defaults) {
-  return {
+  const settings = {
     ...unknownKeys(raw),
     schemaVersion: 2,
     habits: validateHabitsArray(raw.habits),
@@ -156,6 +180,11 @@ function revalidateV2(raw, defaults) {
     holdToComplete: typeof raw.holdToComplete === 'boolean' ? raw.holdToComplete : defaults.holdToComplete,
     github: validateGithub(raw.github, defaults.github),
   };
+  // Setup-wizard flag: 'pending' is the only stored value ('finished' is the
+  // field's absence); anything else drops. v1 blobs never carry it — existing
+  // data means there is nothing to onboard (migrateFromV1 ignores the key).
+  if (raw.onboarding === 'pending') settings.onboarding = 'pending';
+  return settings;
 }
 
 // migrateSettings(raw) -> { settings, migrated }. Total (garbage -> defaults),

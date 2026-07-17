@@ -184,10 +184,21 @@ function buildHabitRow(habit, settings) {
   btn.className = habit.cadence === 'bonus' ? 'habit-row bonus-row' : 'habit-row';
   btn.dataset.habit = habit.id;
   btn.setAttribute('aria-pressed', 'false');
+  const text = document.createElement('span');
+  text.className = 'habit-text';
   const span = document.createElement('span');
   span.className = 'habit-label';
   span.textContent = rowLabel(habit, settings);
-  btn.appendChild(span);
+  text.appendChild(span);
+  // The cue lives where the behavior happens: plan anchor as a faint caption,
+  // rendered only when a plan exists — plan-less habits look exactly as before.
+  if (habit.plan) {
+    const anchor = document.createElement('span');
+    anchor.className = 'habit-anchor';
+    anchor.textContent = `after I ${habit.plan.anchor}`;
+    text.appendChild(anchor);
+  }
+  btn.appendChild(text);
   return btn;
 }
 
@@ -209,9 +220,9 @@ function syncHabitStructure(state, todayIso) {
   const threshold = effectiveThreshold(settings.habits, settings.coreSlack, todayIso);
 
   const sig = JSON.stringify([
-    weekly.map((h) => [h.id, rowLabel(h, settings), h.weeklyTarget]),
-    cores.map((h) => [h.id, rowLabel(h, settings)]),
-    bonus.map((h) => [h.id, rowLabel(h, settings)]),
+    weekly.map((h) => [h.id, rowLabel(h, settings), h.weeklyTarget, h.plan?.anchor ?? null]),
+    cores.map((h) => [h.id, rowLabel(h, settings), h.plan?.anchor ?? null]),
+    bonus.map((h) => [h.id, rowLabel(h, settings), h.plan?.anchor ?? null]),
     threshold,
   ]);
   if (sig === habitStructureSig) return;
@@ -567,6 +578,13 @@ export function renderHabitScreen(state) {
   const labelEl = document.getElementById('habit-screen-label');
   if (labelEl) labelEl.value = isCreate ? '' : habit.label;
 
+  // Plan fields (edit mode only; the group is hidden on create). Populated
+  // here once on open, like the label — never from renderHabitScreenControls.
+  const anchorEl = document.getElementById('habit-screen-anchor');
+  if (anchorEl) anchorEl.value = habit?.plan?.anchor ?? '';
+  const copingEl = document.getElementById('habit-screen-coping');
+  if (copingEl) copingEl.value = habit?.plan?.coping ?? '';
+
   renderHabitScreenControls(state);
 }
 
@@ -602,6 +620,15 @@ export function renderHabitScreenControls(state) {
   }
 
   renderChangeTypeCard(state, habit);
+
+  // Plan group: edit only. The full sentence renders once a plan exists.
+  setHidden('habit-screen-plan-group', isCreate);
+  const sentenceEl = document.getElementById('habit-screen-plan-sentence');
+  if (sentenceEl) {
+    const plan = isCreate ? null : habit.plan;
+    sentenceEl.hidden = !plan;
+    if (plan) sentenceEl.textContent = `After I ${plan.anchor}, I will ${habit.label}.`;
+  }
 
   setHidden('habit-screen-save', !isCreate);
   setHidden('habit-screen-archive-group', isCreate);
@@ -668,6 +695,105 @@ export function renderSettingsForm(state) {
   if (ghRepoEl && document.activeElement !== ghRepoEl) ghRepoEl.value = settings.github.repo || '';
   if (ghPathEl && document.activeElement !== ghPathEl) ghPathEl.value = settings.github.path || 'data.json';
   if (ghTokenEl && document.activeElement !== ghTokenEl) ghTokenEl.value = settings.github.token || '';
+}
+
+// ---------- Setup wizard (#view-onboarding) ----------
+
+export const WIZARD_COPING_DEFAULT = "I'll pick it up the next day — no penalty.";
+
+const WIZARD_DONE_COPY =
+  "That's one. Behavior-change research finds two or three small habits tend to stick as well as " +
+  'one — sometimes better — as long as each stays small. Want to set up another?';
+const WIZARD_DONE_COPY_THIRD =
+  'Three is a strong start — more than that tends to compete. You can always add more in Settings.';
+
+// Full wizard paint. Called only on open and on step transitions — never on
+// in-step control taps — so it is the one place allowed to write the typed
+// inputs (same discipline as renderHabitScreen).
+export function renderWizard(state) {
+  const w = state.wizard;
+  if (!w) return;
+
+  for (const el of document.querySelectorAll('#view-onboarding [data-wizard-step]')) {
+    el.hidden = Number(el.dataset.wizardStep) !== w.step;
+  }
+
+  if (w.step === 2) {
+    document.getElementById('wizard-anchor').value = '';
+    document.getElementById('wizard-behavior').value = '';
+    document.getElementById('wizard-plain-label').value = '';
+    document.getElementById('wizard-coping').value = WIZARD_COPING_DEFAULT;
+  }
+  if (w.step === 3) {
+    // The behavior sentence's residue becomes the label, shown for final trim.
+    document.getElementById('wizard-label').value = w.draft.behavior;
+  }
+  if (w.step === 5) {
+    renderWizardDone(state);
+  }
+
+  renderWizardControls(state);
+}
+
+// Everything except the typed inputs: mode swap, coping reveal, type cards,
+// weekly stepper. Safe to re-run on any control tap mid-typing.
+export function renderWizardControls(state) {
+  const w = state.wizard;
+  if (!w) return;
+
+  if (w.step === 2) {
+    setHidden('wizard-sentence', w.draft.plain);
+    setHidden('wizard-plain', !w.draft.plain);
+    const swapEl = document.getElementById('wizard-swap');
+    if (swapEl) swapEl.textContent = w.draft.plain ? 'Make it a plan instead' : 'Just name it instead';
+    setHidden('wizard-coping-wrap', !w.draft.copingOpen);
+    const toggleEl = document.getElementById('wizard-coping-toggle');
+    if (toggleEl) toggleEl.setAttribute('aria-expanded', String(w.draft.copingOpen));
+  }
+
+  if (w.step === 3) {
+    const pickerEl = document.getElementById('wizard-type-picker');
+    if (pickerEl) setTypeCards(pickerEl, w.draft.cadence);
+    const weekly = w.draft.cadence === 'weekly-quota';
+    setHidden('wizard-target-label', !weekly);
+    setHidden('wizard-target-stepper', !weekly);
+    const targetEl = document.getElementById('wizard-target');
+    if (targetEl && weekly) setStepperDisplay(targetEl, w.draft.weeklyTarget, 1, 7);
+  }
+}
+
+// Step 5: the habit as a real Today row (same builder, preview only), plus
+// the encouragement copy — which flips after the third habit, with Go to
+// Today taking the primary tier and Add another demoting to quiet.
+function renderWizardDone(state) {
+  const w = state.wizard;
+  const habit = state.settings.habits.find((h) => h.id === w.habitId);
+
+  const previewEl = document.getElementById('wizard-preview');
+  if (previewEl) {
+    previewEl.innerHTML = '';
+    if (habit) {
+      const row = buildHabitRow(habit, state.settings);
+      row.disabled = true;
+      setPressed(row, !!state.entries[todayISO()]?.[habit.id]);
+      previewEl.appendChild(row);
+    }
+  }
+
+  const third = w.created >= 3;
+  const copyEl = document.getElementById('wizard-done-copy');
+  if (copyEl) copyEl.textContent = third ? WIZARD_DONE_COPY_THIRD : WIZARD_DONE_COPY;
+
+  const addEl = document.getElementById('wizard-add-another');
+  const goEl = document.getElementById('wizard-go-today');
+  const actionsEl = document.getElementById('wizard-done-actions');
+  if (!addEl || !goEl) return;
+  addEl.textContent = third ? 'Add another anyway' : 'Add another';
+  addEl.className = third ? 'wizard-quiet' : 'primary-action';
+  goEl.textContent = 'Go to Today';
+  goEl.className = third ? 'primary-action' : 'neutral-btn';
+  // The primary reads first: demote the other button to the end.
+  if (actionsEl) actionsEl.appendChild(third ? addEl : goEl);
 }
 
 export function renderAll(state) {

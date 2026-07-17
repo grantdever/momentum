@@ -29,10 +29,13 @@ import {
   moveHabit,
   removeHabit,
   changeHabitType,
+  validatePlan,
+  wizardInterval,
+  createHabit,
 } from '../js/habits.js';
-import { migrateSettings, defaultSettings } from '../js/migrate.js';
+import { migrateSettings, defaultSettings, freshSettings } from '../js/migrate.js';
 import { mergeEntries } from '../js/merge.js';
-import { DEFAULT_SETTINGS, exportString } from '../js/store.js';
+import { DEFAULT_SETTINGS, exportString, loadSettings, isFreshInstall } from '../js/store.js';
 import { parseImport, countUpdated } from '../js/importer.js';
 
 let pass = 0;
@@ -1184,6 +1187,202 @@ t('countUpdated: new days and changed days count; unchanged days do not', () => 
   };
   const count = countUpdated(before, merged, ['2026-07-01', '2026-07-02', '2026-07-03']);
   assert.equal(count, 2);
+});
+
+// --- setup wizard: fresh-install detection, onboarding flag, plans ---------
+
+// The exact 8 legacy habit ids in their historic order. The fresh-vs-legacy
+// tests below assert against this list verbatim so that any break in the v1
+// fabrication path (the single most important migration invariant) fails
+// loudly here.
+const LEGACY_8_IDS = [
+  'trained',
+  'alcoholFree',
+  'cookedAtHome',
+  'sleptOnTime',
+  'workSprint',
+  'walked',
+  'bonusReading',
+  'bonusNoGaming',
+];
+
+// store.js touches localStorage only inside its functions, so a stub on
+// globalThis lets the real loadSettings run the detection matrix in node.
+function withLocalStorage(seed, fn) {
+  const store = new Map(Object.entries(seed));
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  try {
+    return fn(store);
+  } finally {
+    delete globalThis.localStorage;
+  }
+}
+
+t('freshSettings: v2, zero habits, onboarding pending, defaults otherwise', () => {
+  const fresh = freshSettings();
+  assert.equal(fresh.schemaVersion, 2);
+  assert.deepEqual(fresh.habits, []);
+  assert.equal(fresh.onboarding, 'pending');
+  const { habits, onboarding, ...rest } = fresh;
+  const { habits: dHabits, ...dRest } = defaultSettings();
+  assert.deepEqual(rest, dRest);
+});
+
+t('freshSettings: round-trips migrateSettings untouched (empty habits survive)', () => {
+  const { settings, migrated } = migrateSettings(freshSettings());
+  assert.equal(migrated, false);
+  assert.deepEqual(settings, freshSettings());
+});
+
+t('fresh detection: empty localStorage -> loadSettings yields empty habits + pending, persisted', () => {
+  withLocalStorage({}, (store) => {
+    assert.equal(isFreshInstall(), true);
+    const settings = loadSettings();
+    assert.deepEqual(settings.habits, []);
+    assert.equal(settings.onboarding, 'pending');
+    // Persisted, so the next launch takes the ordinary migration path.
+    assert.deepEqual(JSON.parse(store.get('momentum.settings')), freshSettings());
+  });
+});
+
+t('fresh detection: v1 settings blob -> legacy fabrication, exact 8 ids, byte-identical habits', () => {
+  withLocalStorage({ 'momentum.settings': JSON.stringify({ coreThreshold: 4 }) }, () => {
+    assert.equal(isFreshInstall(), false);
+    const settings = loadSettings();
+    assert.deepEqual(settings.habits.map((h) => h.id), LEGACY_8_IDS);
+    assert.deepEqual(settings.habits, defaultHabits());
+    assert.equal('onboarding' in settings, false);
+  });
+});
+
+t('fresh detection: entries-only edge -> legacy path, never the wizard', () => {
+  const entries = { '2026-07-01': hitEntry('2026-07-01') };
+  withLocalStorage({ 'momentum.entries': JSON.stringify(entries) }, () => {
+    assert.equal(isFreshInstall(), false);
+    const settings = loadSettings();
+    assert.deepEqual(settings.habits.map((h) => h.id), LEGACY_8_IDS);
+    assert.equal('onboarding' in settings, false);
+  });
+});
+
+t('fresh detection: v2 blob passes through untouched, no onboarding injected', () => {
+  const v2 = defaultSettings();
+  withLocalStorage({ 'momentum.settings': JSON.stringify(v2) }, () => {
+    const settings = loadSettings();
+    assert.deepEqual(settings, v2);
+    assert.equal('onboarding' in settings, false);
+  });
+});
+
+t('onboarding flag: v2 pending round-trips; garbage values drop the field', () => {
+  const pending = migrateSettings({ ...defaultSettings(), onboarding: 'pending' });
+  assert.equal(pending.settings.onboarding, 'pending');
+  assert.equal(pending.migrated, false);
+  for (const garbage of ['done', 42, true, {}]) {
+    const { settings } = migrateSettings({ ...defaultSettings(), onboarding: garbage });
+    assert.equal('onboarding' in settings, false);
+  }
+  // Cleared flag (field absent) stays absent — finishing the wizard sticks.
+  const cleared = migrateSettings(defaultSettings());
+  assert.equal('onboarding' in cleared.settings, false);
+});
+
+t('onboarding flag: a v1 blob never keeps it — existing data has nothing to onboard', () => {
+  const { settings } = migrateSettings({ coreThreshold: 4, onboarding: 'pending' });
+  assert.equal('onboarding' in settings, false);
+  assert.deepEqual(settings.habits.map((h) => h.id), LEGACY_8_IDS);
+});
+
+t('validatePlan: trims and caps both fields; coping optional and dropped when empty', () => {
+  assert.deepEqual(validatePlan({ anchor: '  pour my coffee  ' }), { anchor: 'pour my coffee' });
+  assert.deepEqual(
+    validatePlan({ anchor: 'eat lunch', coping: ' pick it up tomorrow ' }),
+    { anchor: 'eat lunch', coping: 'pick it up tomorrow' }
+  );
+  assert.deepEqual(validatePlan({ anchor: 'eat lunch', coping: '   ' }), { anchor: 'eat lunch' });
+  const long = 'x'.repeat(200);
+  const capped = validatePlan({ anchor: long, coping: long });
+  assert.equal(capped.anchor.length, 120);
+  assert.equal(capped.coping.length, 120);
+  // Stable under re-validation (idempotent for migrateSettings).
+  assert.deepEqual(validatePlan(capped), capped);
+});
+
+t('validatePlan: malformed -> null; bad coping type drops only the coping line', () => {
+  assert.equal(validatePlan(undefined), null);
+  assert.equal(validatePlan('after I eat lunch'), null);
+  assert.equal(validatePlan(['eat lunch']), null);
+  assert.equal(validatePlan({ coping: 'no cue' }), null);
+  assert.equal(validatePlan({ anchor: 42 }), null);
+  assert.equal(validatePlan({ anchor: '   ' }), null);
+  assert.deepEqual(validatePlan({ anchor: 'eat lunch', coping: 42 }), { anchor: 'eat lunch' });
+});
+
+t('migrateSettings: habit plan round-trips revalidation; malformed plans drop, habit kept', () => {
+  const planned = {
+    id: 'reading',
+    label: 'read ten pages',
+    cadence: 'daily-core',
+    active: [{ from: null, to: null }],
+    plan: { anchor: 'get into bed', coping: "I'll pick it up the next day — no penalty." },
+  };
+  const v2 = { ...defaultSettings(), habits: [planned] };
+  const first = migrateSettings(v2);
+  assert.deepEqual(first.settings.habits[0], planned);
+  const second = migrateSettings(first.settings);
+  assert.equal(second.migrated, false);
+  assert.deepEqual(second.settings.habits[0].plan, planned.plan);
+
+  const mangled = { ...defaultSettings(), habits: [{ ...planned, plan: 'not a plan' }] };
+  const { settings } = migrateSettings(mangled);
+  assert.equal(settings.habits.length, 1);
+  assert.equal('plan' in settings.habits[0], false);
+});
+
+t('wizardInterval: fresh session -> open interval; existing data -> active from today', () => {
+  assert.deepEqual(wizardInterval(true, '2026-07-17'), [{ from: null, to: null }]);
+  assert.deepEqual(wizardInterval(false, '2026-07-17'), [{ from: '2026-07-17', to: null }]);
+});
+
+t('createHabit: wizard-created shape — minted id, validated plan, target only for weekly', () => {
+  const daily = createHabit({
+    label: 'read ten pages',
+    cadence: 'daily-core',
+    weeklyTarget: 3,
+    plan: { anchor: ' get into bed ', coping: '' },
+    active: wizardInterval(true, '2026-07-17'),
+    habits: [],
+  });
+  assert.equal(daily.id, 'readTenPages');
+  assert.equal(daily.cadence, 'daily-core');
+  assert.deepEqual(daily.active, [{ from: null, to: null }]);
+  assert.deepEqual(daily.plan, { anchor: 'get into bed' });
+  assert.equal('weeklyTarget' in daily, false);
+  // Round-trips validation untouched — what the wizard writes, migrate keeps.
+  const { settings } = migrateSettings({ ...defaultSettings(), habits: [daily] });
+  assert.deepEqual(settings.habits[0], daily);
+
+  const weekly = createHabit({
+    label: 'Swim',
+    cadence: 'weekly-quota',
+    weeklyTarget: 99,
+    plan: null,
+    active: wizardInterval(false, '2026-07-17'),
+    habits: [{ id: 'swim', label: 'Swim', cadence: 'bonus', active: [] }],
+  });
+  assert.equal(weekly.id, 'swim2'); // never collides, even with archived ids
+  assert.equal(weekly.weeklyTarget, 7); // clamped
+  assert.deepEqual(weekly.active, [{ from: '2026-07-17', to: null }]);
+  assert.equal('plan' in weekly, false);
+});
+
+t('effectiveThreshold: a single core habit with default slack 1 -> threshold 1', () => {
+  const habits = [{ id: 'readTenPages', label: 'read ten pages', cadence: 'daily-core', active: [{ from: null, to: null }] }];
+  assert.equal(effectiveThreshold(habits, 1, '2026-07-17'), 1);
 });
 
 // --- personal data guard -------------------------------------------------
