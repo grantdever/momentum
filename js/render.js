@@ -2,7 +2,7 @@
 // wiring. This module only reads state and streaks.js and writes to the DOM
 // ids/attributes defined in index.html.
 
-import { todayISO, addDays, weekStart, isEditableDate } from './dates.js';
+import { todayISO, addDays, weekStart, isEditableDate, dayOfMonth } from './dates.js';
 import {
   dailyStreak,
   weeklyQuotaStreak,
@@ -380,6 +380,7 @@ export function renderHistory(state) {
       const detail = `${monthDay(cell.date)}: ${parts.join(', ')}`;
       div.dataset.detail = detail;
       div.dataset.date = cell.date;
+      div.dataset.day = String(dayOfMonth(cell.date));
       if (isEditableDate(cell.date, todayIso)) div.classList.add('editable');
       // Surface the day's note so it has a way back out (it only ever went in).
       const note = state.entries[cell.date]?.note?.trim();

@@ -39,3 +39,9 @@ export function weekStart(iso, weekStartsOn = 'monday') {
 export function isEditableDate(dateIso, todayIso) {
   return dateIso <= todayIso && dateIso >= addDays(todayIso, -6);
 }
+
+// Day-of-month (no leading zero) from an ISO "YYYY-MM-DD" key. Pure slice —
+// never constructs a Date, so it stays timezone-proof like the rest of this module.
+export function dayOfMonth(iso) {
+  return Number(iso.slice(8, 10));
+}

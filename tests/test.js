@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { todayISO, addDays, weekStart, isEditableDate } from '../js/dates.js';
+import { todayISO, addDays, weekStart, isEditableDate, dayOfMonth } from '../js/dates.js';
 import {
   coreCount,
   dailyStreak,
@@ -172,6 +172,22 @@ t('isEditableDate: seven days prior is NOT editable (outside the window)', () =>
 t('isEditableDate: a future date is NOT editable', () => {
   const today = '2026-07-21';
   assert.equal(isEditableDate(addDays(today, 1), today), false);
+});
+
+t('dayOfMonth strips the leading zero', () => {
+  assert.equal(dayOfMonth('2026-07-05'), 5);
+});
+
+t('dayOfMonth two-digit day', () => {
+  assert.equal(dayOfMonth('2026-07-16'), 16);
+});
+
+t('dayOfMonth end of month', () => {
+  assert.equal(dayOfMonth('2026-01-31'), 31);
+});
+
+t('dayOfMonth is a pure slice (DST-adjacent date, no Date drift)', () => {
+  assert.equal(dayOfMonth('2026-03-08'), 8);
 });
 
 // ---------- habits.js: defaults, effective dating, id generation ----------

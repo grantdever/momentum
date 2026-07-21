@@ -657,6 +657,22 @@ input[type="number"]::-webkit-outer-spin-button {
   background: var(--text);
 }
 
+/* Day-of-month wayfinding numeral on the editable (rolling 7-day) cells only.
+   Scoped to .history-grid so the future 10px year grid never inherits it;
+   gated to .editable so numbering every cell later is a one-line change.
+   Quiet by design: --text-faint recedes on dark cells and softens on bright
+   fully-logged cells rather than fighting the intensity ramp per level. */
+.history-grid .cell.editable::before {
+  content: attr(data-day);
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
 .history-legend {
   display: flex;
   flex-direction: column;
