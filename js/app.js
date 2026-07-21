@@ -74,6 +74,7 @@ function init() {
     activeDate: todayISO(),
     currentDate: todayISO(),
     view: 'today',
+    historyView: 'recent',
     // null | { mode: 'create', cadence, weeklyTarget }
     //      | { mode: 'edit', id, changeType: null | { cadence, weeklyTarget } }
     habitScreen: null,
@@ -398,11 +399,18 @@ function init() {
     renderAll(state);
   });
 
+  document.getElementById('history-view-toggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-history-view]');
+    if (!btn) return;
+    state.historyView = btn.dataset.historyView;
+    renderAll(state);
+  });
+
   document.getElementById('history-grid').addEventListener('click', (e) => {
     const cell = e.target.closest('[data-detail]');
     if (!cell) return;
     const date = cell.dataset.date;
-    if (date && isEditableDate(date, todayISO())) {
+    if (state.historyView === 'recent' && date && isEditableDate(date, todayISO())) {
       state.activeDate = date;
       showView('today');
       renderAll(state);

@@ -2,13 +2,14 @@
 // wiring. This module only reads state and streaks.js and writes to the DOM
 // ids/attributes defined in index.html.
 
-import { todayISO, addDays, weekStart, isEditableDate, dayOfMonth } from './dates.js';
+import { todayISO, addDays, weekStart, isEditableDate, dayOfMonth, weekdayIndex } from './dates.js';
 import {
   dailyStreak,
   weeklyQuotaStreak,
   weeklyQuotaProgress,
   cumulativeStats,
   historyWeeks,
+  historyGrid,
   habitCounts,
   intensityLevel,
   habitHasHistory,
@@ -336,9 +337,16 @@ export function renderHistory(state) {
   if (!grid) return;
   const todayIso = todayISO();
   const weekStartsOn = state.settings.weekStartsOn;
-  const weeks = historyWeeks(state.entries, state.settings.habits, todayIso, 5, weekStartsOn);
-  grid.innerHTML = '';
 
+  // Toggle pressed state.
+  const toggle = document.getElementById('history-view-toggle');
+  if (toggle) {
+    for (const b of toggle.querySelectorAll('[data-history-view]')) {
+      setPressed(b, b.dataset.historyView === state.historyView);
+    }
+  }
+
+  // Shared: weekly legend swatch/label.
   const markerLabel = weeklyMarkerLabel(state.settings.habits, todayIso);
   const markerWord = markerLabel.toLowerCase();
   const hasWeekly = activeWeeklyHabits(state.settings.habits, todayIso).length > 0;
@@ -349,6 +357,29 @@ export function renderHistory(state) {
     legendLabel.hidden = !hasWeekly;
     legendLabel.textContent = markerLabel;
   }
+
+  const caption = document.getElementById('history-caption');
+  grid.className = 'history-grid mode-' + state.historyView;
+  grid.innerHTML = '';
+
+  if (state.historyView === 'recent') {
+    if (caption) {
+      caption.textContent = 'This week · tap a day to edit';
+      caption.hidden = false;
+    }
+    renderRecentRibbon(grid, state, todayIso, markerWord);
+  } else {
+    if (caption) caption.hidden = true;
+    renderOverviewGrid(grid, state, todayIso, markerWord, weekStartsOn);
+  }
+
+  renderHabitCounts(state);
+}
+
+// Read-only, color-only 5-week grid (weekday-aligned). Tapping a cell reveals
+// detail/note; editing never happens here (that's the Recent ribbon's job).
+function renderOverviewGrid(grid, state, todayIso, markerWord, weekStartsOn) {
+  const weeks = historyWeeks(state.entries, state.settings.habits, todayIso, 5, weekStartsOn);
 
   // Column-major grid: first column is weekday labels, then one column per
   // week (first weekday at the top), so weekly rhythm reads across a row.
@@ -380,8 +411,6 @@ export function renderHistory(state) {
       const detail = `${monthDay(cell.date)}: ${parts.join(', ')}`;
       div.dataset.detail = detail;
       div.dataset.date = cell.date;
-      div.dataset.day = String(dayOfMonth(cell.date));
-      if (isEditableDate(cell.date, todayIso)) div.classList.add('editable');
       // Surface the day's note so it has a way back out (it only ever went in).
       const note = state.entries[cell.date]?.note?.trim();
       if (note) div.dataset.note = note;
@@ -390,8 +419,53 @@ export function renderHistory(state) {
       grid.appendChild(div);
     }
   }
+}
 
-  renderHabitCounts(state);
+const RIBBON_WD_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']; // index 0=Sun..6=Sat
+
+// Dated, editable week ribbon: the last 7 days oldest -> newest, ending
+// today. Weekday + date labels sit outside the color chip so they stay
+// legible on every intensity.
+function renderRecentRibbon(grid, state, todayIso, markerWord) {
+  const days = historyGrid(state.entries, state.settings.habits, todayIso, 7);
+
+  for (const day of days) {
+    const intensity = day.logged ? intensityLevel(day.count, day.coreTotal) : 0;
+    const parts = [
+      day.logged ? `${day.count} of ${day.coreTotal}` : 'not logged',
+      day.offDay ? 'off day' : '',
+      day.weeklyDone ? markerWord : '',
+    ].filter(Boolean);
+    const detail = `${monthDay(day.date)}: ${parts.join(', ')}`;
+    const note = state.entries[day.date]?.note?.trim();
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ribbon-day' + (day.date === todayIso ? ' today' : '');
+    btn.dataset.detail = detail;
+    btn.dataset.date = day.date;
+    if (note) btn.dataset.note = note;
+    btn.setAttribute('aria-label', note ? `${detail}. Note: ${note}` : detail);
+
+    const wd = document.createElement('span');
+    wd.className = 'ribbon-wd';
+    wd.setAttribute('aria-hidden', 'true');
+    wd.textContent = RIBBON_WD_LETTERS[weekdayIndex(day.date)];
+
+    const dateEl = document.createElement('span');
+    dateEl.className = 'ribbon-date';
+    dateEl.setAttribute('aria-hidden', 'true');
+    dateEl.textContent = String(dayOfMonth(day.date));
+
+    const chip = document.createElement('span');
+    chip.className = `cell i${intensity}`;
+    if (day.offDay) chip.classList.add('off');
+    if (day.weeklyDone) chip.classList.add('trained');
+    chip.setAttribute('aria-hidden', 'true');
+
+    btn.append(wd, dateEl, chip);
+    grid.appendChild(btn);
+  }
 }
 
 function renderHabitCounts(state) {

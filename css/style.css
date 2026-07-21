@@ -602,12 +602,44 @@ input[type="number"]::-webkit-outer-spin-button {
   border: 1px dashed var(--border);
 }
 
-/* Editable affordance (rolling 7-day window): a faint inset ring layered on
-   top of the intensity background — never replaces it — plus a pointer
-   cursor. Deliberately subtle; no motion. */
-.history-grid .cell.editable {
+.history-caption {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: var(--s2);
+}
+
+.history-grid.mode-recent {
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: auto;
+  grid-auto-flow: row;
+}
+
+.ribbon-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: transparent;
+  border: none;
+  padding: var(--s1) 0;
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  min-height: 44px;
+}
+.ribbon-wd {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.ribbon-date {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1;
+}
+.ribbon-day.today .ribbon-date {
+  color: var(--accent);
+  font-weight: 600;
+}
+.ribbon-day .cell {
+  width: 100%;   /* the color chip fills the column, stays square via aspect-ratio:1 */
 }
 
 .grid-detail {
@@ -655,22 +687,6 @@ input[type="number"]::-webkit-outer-spin-button {
   height: 5px;
   border-radius: 50%;
   background: var(--text);
-}
-
-/* Day-of-month wayfinding numeral on the editable (rolling 7-day) cells only.
-   Scoped to .history-grid so the future 10px year grid never inherits it;
-   gated to .editable so numbering every cell later is a one-line change.
-   Quiet by design: --text-faint recedes on dark cells and softens on bright
-   fully-logged cells rather than fighting the intensity ramp per level. */
-.history-grid .cell.editable::before {
-  content: attr(data-day);
-  position: absolute;
-  top: 3px;
-  left: 5px;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--text-faint);
-  pointer-events: none;
 }
 
 .history-legend {

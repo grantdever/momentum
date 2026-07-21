@@ -45,3 +45,11 @@ export function isEditableDate(dateIso, todayIso) {
 export function dayOfMonth(iso) {
   return Number(iso.slice(8, 10));
 }
+
+// Weekday index (0 = Sunday … 6 = Saturday) for an ISO "YYYY-MM-DD" key, in
+// local time — same local-Date construction weekStart() uses, so it stays
+// consistent with the rest of this module (never toISOString/UTC).
+export function weekdayIndex(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).getDay();
+}

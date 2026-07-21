@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { todayISO, addDays, weekStart, isEditableDate, dayOfMonth } from '../js/dates.js';
+import { todayISO, addDays, weekStart, isEditableDate, dayOfMonth, weekdayIndex } from '../js/dates.js';
 import {
   coreCount,
   dailyStreak,
@@ -188,6 +188,21 @@ t('dayOfMonth end of month', () => {
 
 t('dayOfMonth is a pure slice (DST-adjacent date, no Date drift)', () => {
   assert.equal(dayOfMonth('2026-03-08'), 8);
+});
+
+t('weekdayIndex: absolute anchor — 2026-01-01 is a Thursday (getDay() === 4)', () => {
+  assert.equal(new Date(2026, 0, 1).getDay(), 4); // verified via node before picking the literal below
+  assert.equal(weekdayIndex('2026-01-01'), 4);
+});
+
+t('weekdayIndex: weekly period — same weekday 7 days later', () => {
+  const d = '2026-07-21';
+  assert.equal(weekdayIndex(d), weekdayIndex(addDays(d, 7)));
+});
+
+t('weekdayIndex: consecutive days increment mod 7', () => {
+  const d = '2026-07-21';
+  assert.equal(weekdayIndex(addDays(d, 1)), (weekdayIndex(d) + 1) % 7);
 });
 
 // ---------- habits.js: defaults, effective dating, id generation ----------
@@ -715,6 +730,27 @@ t('historyGrid: length n, oldest-first, correct flags', () => {
   const offDayEntry = grid.find((d) => d.date === '2026-07-11');
   assert.equal(offDayEntry.offDay, true);
   assert.equal(offDayEntry.logged, true);
+});
+
+t('historyGrid: n=7 ribbon — 7 days oldest..today in order, with numeric/boolean flags', () => {
+  const today = '2026-07-21';
+  const entries = {
+    '2026-07-19': hitEntry('2026-07-19', { trained: true }),
+    '2026-07-20': e('2026-07-20', { offDay: true }),
+  };
+  const grid = historyGrid(entries, freshHabits(), today, 7);
+  assert.equal(grid.length, 7);
+  assert.deepEqual(
+    grid.map((d) => d.date),
+    [-6, -5, -4, -3, -2, -1, 0].map((n) => addDays(today, n))
+  );
+  assert.equal(grid[grid.length - 1].date, today);
+  for (const d of grid) {
+    assert.equal(typeof d.count, 'number');
+    assert.equal(typeof d.coreTotal, 'number');
+    assert.equal(typeof d.offDay, 'boolean');
+    assert.equal(typeof d.weeklyDone, 'boolean');
+  }
 });
 
 // ---------- merge.js ----------

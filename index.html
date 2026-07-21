@@ -59,6 +59,11 @@
 
   <section id="view-history" class="view">
     <h2 class="view-title">History</h2>
+    <div id="history-view-toggle" class="day-selector" role="group" aria-label="History view">
+      <button type="button" data-history-view="recent" class="day-btn" aria-pressed="true">Recent</button>
+      <button type="button" data-history-view="overview" class="day-btn" aria-pressed="false">Overview</button>
+    </div>
+    <p id="history-caption" class="history-caption"></p>
     <div id="history-grid" class="history-grid"></div>
     <div id="grid-detail" class="grid-detail" aria-live="polite"></div>
     <div class="history-legend">
