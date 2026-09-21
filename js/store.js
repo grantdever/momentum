@@ -1,11 +1,14 @@
-// localStorage persistence. This is the only file in js/ that touches
-// localStorage, window, or other browser globals.
+// localStorage persistence. This file owns localStorage access; the only
+// other module that touches browser globals is persistence.js (read-only
+// StorageManager/navigator probes plus the persist() request).
 
 import { migrateSettings, defaultSettings, freshSettings } from './migrate.js';
 
 const ENTRIES_KEY = 'momentum.entries';
 const SETTINGS_KEY = 'momentum.settings';
 const LAST_OPEN_KEY = 'momentum.lastOpen';
+const SYNC_BASE_KEY = 'momentum.syncBase';
+const LAST_SHA_KEY = 'momentum.lastSha';
 
 export const DEFAULT_SETTINGS = defaultSettings();
 
@@ -22,7 +25,85 @@ export function loadEntries() {
 }
 
 export function saveEntries(entries) {
-  localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
+  try {
+    localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Last-synced snapshot for three-way merges, persisted alongside entries so
+// a reload keeps 3-way precision instead of downgrading to two-way merge.
+// Crash-window note: entries and base are two separate setItem writes, so a
+// crash between them can leave a newer entries map with an older base. That
+// resolves as a stale-base 3-way (one-sided edits still win; only a rare
+// double-edited field falls back to timestamp order) and heals on the next
+// successful sync. Multi-tab note: last writer wins; the next resume merge
+// heals divergence. A failed base write (quota) must be treated by callers
+// as a silent downgrade to two-way merge, never as synced.
+export function loadSyncBase() {
+  try {
+    const raw = localStorage.getItem(SYNC_BASE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSyncBase(entries) {
+  try {
+    if (entries == null) {
+      localStorage.removeItem(SYNC_BASE_KEY);
+    } else {
+      localStorage.setItem(SYNC_BASE_KEY, JSON.stringify(entries));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearSyncBase() {
+  try {
+    localStorage.removeItem(SYNC_BASE_KEY);
+  } catch {
+    // Read-only stub: nothing to clear.
+  }
+}
+
+export function loadLastSha() {
+  try {
+    const raw = localStorage.getItem(LAST_SHA_KEY);
+    return raw || null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastSha(sha) {
+  try {
+    if (sha == null) {
+      localStorage.removeItem(LAST_SHA_KEY);
+    } else {
+      localStorage.setItem(LAST_SHA_KEY, String(sha));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearSyncState() {
+  clearSyncBase();
+  try {
+    localStorage.removeItem(LAST_SHA_KEY);
+  } catch {
+    // Read-only stub: nothing to clear.
+  }
 }
 
 // Fresh install: NEITHER settings NOR entries key exists. Entries without
@@ -61,7 +142,12 @@ export function loadSettings() {
 }
 
 export function saveSettings(settings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function loadLastOpen() {
@@ -73,7 +159,12 @@ export function loadLastOpen() {
 }
 
 export function saveLastOpen(dateIso) {
-  localStorage.setItem(LAST_OPEN_KEY, dateIso);
+  try {
+    localStorage.setItem(LAST_OPEN_KEY, dateIso);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function exportString(entries, settings) {

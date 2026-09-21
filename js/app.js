@@ -40,7 +40,11 @@ import {
   schedulePush,
   setStatusListener,
   setRemoteUpdateListener,
+  getSyncBase,
+  setSyncBase,
+  clearSyncState,
 } from './sync.js';
+import { ensurePersistence } from './persistence.js';
 import { initGestures } from './gestures.js';
 
 const TABS = ['today', 'history', 'settings'];
@@ -86,6 +90,16 @@ function init() {
 
   registerServiceWorker();
 
+  // Ask the platform to keep this origin's storage (app shell cache plus
+  // local data) out of automatic eviction. Fire-and-forget: the promise
+  // never blocks first paint and never surfaces UI — on platforms without
+  // the StorageManager API it simply resolves ungranted.
+  try {
+    ensurePersistence().catch(() => {});
+  } catch {
+    // A throwing storage stub must never break launch.
+  }
+
   function getOrCreate(date) {
     const existing = state.entries[date];
     if (existing) return existing;
@@ -100,8 +114,29 @@ function init() {
     schedulePush(gh, () => state.entries);
   }
 
+  function showBanner(message) {
+    const banner = document.getElementById('banner');
+    if (!banner) return;
+    const messageEl = document.getElementById('banner-message');
+    if (messageEl) messageEl.textContent = message;
+    banner.hidden = false;
+  }
+
+  function showQuotaError() {
+    showBanner('Storage is full — changes kept in memory only');
+    renderSyncStatus('error', 'Storage full — free space to sync');
+  }
+
+  // Every entries write is return-checked: a quota-failed save must surface
+  // instead of silently losing data, and must never be reported as synced.
+  function persistEntries() {
+    const ok = saveEntries(state.entries);
+    if (!ok) showQuotaError();
+    return ok;
+  }
+
   function persistAndRender() {
-    saveEntries(state.entries);
+    persistEntries();
     renderAll(state);
     maybeSync();
   }
@@ -124,16 +159,8 @@ function init() {
     const entry = getOrCreate(date);
     entry.note = note;
     entry.updatedAt = new Date().toISOString();
-    saveEntries(state.entries);
+    persistEntries();
     maybeSync();
-  }
-
-  function showBanner(message) {
-    const banner = document.getElementById('banner');
-    if (!banner) return;
-    const messageEl = document.getElementById('banner-message');
-    if (messageEl) messageEl.textContent = message;
-    banner.hidden = false;
   }
 
   setStatusListener((status, message) => {
@@ -142,28 +169,44 @@ function init() {
 
   setRemoteUpdateListener((mergedEntries) => {
     state.entries = mergedEntries;
-    saveEntries(state.entries);
+    persistEntries();
     renderAll(state);
   });
 
   let syncInFlight = false;
+  let lastPullAt = 0;
 
-  async function syncOnLoadOrResume() {
+  async function syncOnLoadOrResume(opts = {}) {
     const gh = state.settings.github;
     if (!gh.enabled || !hasGithubCreds(gh) || syncSuspended || syncInFlight) return;
+    // Resync throttle: focus/pageshow/interval resumes at most every 30 s.
+    // Boot and explicit paths pass force to bypass it.
+    if (!opts.force && Date.now() - lastPullAt < 30000) return;
+    lastPullAt = Date.now();
     syncInFlight = true;
     renderSyncStatus('syncing');
     try {
+      // Capture the base before pull: pull refreshes the stored snapshot to
+      // the remote state, which would collapse the 3-way into a merge
+      // against remote itself.
+      const baseBefore = getSyncBase();
       const remote = await pull(gh);
-      const { merged, localChanged, remoteChanged } = mergeEntries(state.entries, remote.entries);
+      // Three-way when a last-synced snapshot exists (concurrent edits on
+      // different fields both survive; one-sided edits win regardless of
+      // clock skew), two-way merge otherwise.
+      const { merged, localChanged, remoteChanged } = mergeEntries(state.entries, remote.entries, baseBefore);
       if (localChanged) {
         state.entries = merged;
-        saveEntries(state.entries);
+        if (!persistEntries()) return;
         renderAll(state);
       }
       if (remoteChanged) {
         schedulePush(gh, () => state.entries);
       } else {
+        // Converged with remote: the merged map is the new sync base.
+        // A failed entries save above already returned early, so reaching
+        // here means local state is durable and 'synced' is honest.
+        setSyncBase(merged);
         renderSyncStatus('synced');
       }
     } catch (err) {
@@ -458,15 +501,20 @@ function init() {
     if (e.target.closest('#habit-editor')) return;
     syncSuspended = false;
     readSettingsFromForm();
-    saveSettings(state.settings);
+    if (!saveSettings(state.settings)) showQuotaError();
     renderAll(state);
-    if (state.settings.github.enabled && hasGithubCreds(state.settings.github)) {
-      syncOnLoadOrResume();
+    // Config-change semantics: disabling sync or editing credentials drops
+    // the stored base/sha (memory + persisted) so the next enable starts
+    // from a clean two-way merge instead of a stale snapshot.
+    if (!state.settings.github.enabled || !hasGithubCreds(state.settings.github)) {
+      clearSyncState();
+      return;
     }
+    syncOnLoadOrResume({ force: true });
   });
 
   function persistSettings() {
-    saveSettings(state.settings);
+    if (!saveSettings(state.settings)) showQuotaError();
     renderAll(state);
   }
 
@@ -918,7 +966,13 @@ function init() {
     const { merged } = mergeEntries(state.entries, result.entries);
     const updated = countUpdated(before, merged, Object.keys(result.entries));
     state.entries = merged;
-    saveEntries(state.entries);
+    // Import stays a deliberate two-way merge (never touches the sync base);
+    // a quota failure here surfaces instead of reporting a good import.
+    if (!persistEntries()) {
+      setImportStatus('Imported in memory, but storage is full — free space to keep it');
+      renderAll(state);
+      return;
+    }
     renderAll(state);
     maybeSync();
     const total = Object.keys(result.entries).length;
@@ -941,7 +995,7 @@ function init() {
 
   renderAll(state);
   maybeShowMorningRibbon();
-  syncOnLoadOrResume();
+  syncOnLoadOrResume({ force: true });
 
   // First run (fresh install flagged by store.js) or the #setup test route:
   // open the wizard. #setup operates on live config regardless of onboarding

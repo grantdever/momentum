@@ -39,11 +39,27 @@ import { parseImport, countUpdated } from '../js/importer.js';
 
 let pass = 0;
 let fail = 0;
+const pending = [];
 
 function t(name, fn) {
   try {
-    fn();
-    pass++;
+    const result = fn();
+    if (result && typeof result.then === 'function') {
+      pending.push(
+        result.then(
+          () => {
+            pass++;
+          },
+          (err) => {
+            fail++;
+            console.error(`FAIL: ${name}`);
+            console.error(err && err.message ? err.message : err);
+          }
+        )
+      );
+    } else {
+      pass++;
+    }
   } catch (err) {
     fail++;
     console.error(`FAIL: ${name}`);
@@ -776,11 +792,13 @@ t('mergeEntries: disjoint keys union', () => {
   assert.deepEqual(Object.keys(merged).sort(), ['2026-07-01', '2026-07-02']);
 });
 
-t('mergeEntries: tie on updatedAt -> local wins', () => {
+t('mergeEntries: tie on updatedAt -> lexical max wins (deterministic on every device)', () => {
   const local = { '2026-07-01': e('2026-07-01', { updatedAt: '2026-07-01T10:00:00.000Z', note: 'local' }) };
   const remote = { '2026-07-01': e('2026-07-01', { updatedAt: '2026-07-01T10:00:00.000Z', note: 'remote' }) };
   const { merged } = mergeEntries(local, remote);
-  assert.equal(merged['2026-07-01'].note, 'local');
+  // 'remote' > 'local' lexically: both sides agree however args are ordered.
+  assert.equal(merged['2026-07-01'].note, 'remote');
+  assert.equal(mergeEntries(remote, local).merged['2026-07-01'].note, 'remote');
 });
 
 t('mergeEntries: identical inputs -> both flags false', () => {
@@ -1445,6 +1463,298 @@ t('effectiveThreshold: a single core habit with default slack 1 -> threshold 1',
   assert.equal(effectiveThreshold(habits, 1, '2026-07-17'), 1);
 });
 
+// --- sync resilience: field-level merge, clock drift, offline reunion ----
+// Neutral habit ids (moveBody/drinkWater come from the default config) keep
+// these cases generic: the merge is field-agnostic by design.
+
+import { mergeDayEntry } from '../js/merge.js';
+import {
+  isStandalonePWA,
+  getPersistenceSupport,
+  persistenceFallbackAvailable,
+  checkPersistence,
+  ensurePersistence,
+  __resetPersistenceMemo,
+} from '../js/persistence.js';
+import { getSyncBase, setSyncBase } from '../js/sync.js';
+
+function day(date, overrides = {}) {
+  return { date, note: '', offDay: false, updatedAt: '2026-07-01T00:00:00.000Z', ...overrides };
+}
+
+t('merge: concurrent edits on different habits both survive (no remote overwrite)', () => {
+  const local = { '2026-07-01': day('2026-07-01', { moveBody: true, drinkWater: false, updatedAt: '2026-07-01T10:00:00.000Z' }) };
+  const remote = { '2026-07-01': day('2026-07-01', { moveBody: false, drinkWater: true, updatedAt: '2026-07-01T12:00:00.000Z' }) };
+  const { merged, localChanged, remoteChanged } = mergeEntries(local, remote);
+  assert.equal(merged['2026-07-01'].moveBody, true);
+  assert.equal(merged['2026-07-01'].drinkWater, true);
+  assert.equal(localChanged, true);
+  assert.equal(remoteChanged, true);
+});
+
+t('merge: concurrent edits survive regardless of stamp order (newer side still keeps older completion)', () => {
+  const local = { '2026-07-01': day('2026-07-01', { moveBody: false, drinkWater: true, updatedAt: '2026-07-01T12:00:00.000Z' }) };
+  const remote = { '2026-07-01': day('2026-07-01', { moveBody: true, drinkWater: false, updatedAt: '2026-07-01T10:00:00.000Z' }) };
+  const { merged } = mergeEntries(local, remote);
+  assert.equal(merged['2026-07-01'].moveBody, true);
+  assert.equal(merged['2026-07-01'].drinkWater, true);
+});
+
+t('merge: clock drift cannot wipe a completion (far-future stamp, note-only change)', () => {
+  const local = { '2026-07-01': day('2026-07-01', { moveBody: true, note: 'morning walk', updatedAt: '2026-07-01T08:00:00.000Z' }) };
+  // A device whose clock runs days ahead edits only the note.
+  const remote = { '2026-07-01': day('2026-07-01', { moveBody: false, note: 'evening note', updatedAt: '2026-07-05T08:00:00.000Z' }) };
+  const { merged } = mergeEntries(local, remote);
+  assert.equal(merged['2026-07-01'].moveBody, true);
+  assert.equal(merged['2026-07-01'].note, 'evening note');
+});
+
+t('merge: offline reunion unions disjoint days from both devices', () => {
+  const local = { '2026-07-01': day('2026-07-01', { moveBody: true }) };
+  const remote = { '2026-07-02': day('2026-07-02', { drinkWater: true }) };
+  const { merged, localChanged, remoteChanged } = mergeEntries(local, remote);
+  assert.deepEqual(Object.keys(merged).sort(), ['2026-07-01', '2026-07-02']);
+  assert.equal(merged['2026-07-01'].moveBody, true);
+  assert.equal(merged['2026-07-02'].drinkWater, true);
+  assert.equal(localChanged, true);
+  assert.equal(remoteChanged, true);
+});
+
+t('merge: out-of-order arrival keeps the stale side intact (older remote date unions, newer local untouched)', () => {
+  const local = {
+    '2026-07-01': day('2026-07-01', { moveBody: true, updatedAt: '2026-07-03T00:00:00.000Z' }),
+    '2026-07-02': day('2026-07-02', { drinkWater: true, updatedAt: '2026-07-03T00:00:00.000Z' }),
+  };
+  const remote = { '2026-06-30': day('2026-06-30', { moveBody: true, updatedAt: '2026-06-30T00:00:00.000Z' }) };
+  const { merged } = mergeEntries(local, remote);
+  assert.deepEqual(Object.keys(merged).sort(), ['2026-06-30', '2026-07-01', '2026-07-02']);
+  assert.equal(merged['2026-07-02'].drinkWater, true);
+});
+
+t('merge: off-day recorded on either device survives alongside habit flags', () => {
+  const local = { '2026-07-01': day('2026-07-01', { moveBody: true, offDay: false, updatedAt: '2026-07-01T10:00:00.000Z' }) };
+  const remote = { '2026-07-01': day('2026-07-01', { moveBody: false, offDay: true, updatedAt: '2026-07-01T12:00:00.000Z' }) };
+  const { merged } = mergeEntries(local, remote);
+  assert.equal(merged['2026-07-01'].offDay, true);
+  assert.equal(merged['2026-07-01'].moveBody, true);
+});
+
+t('merge: merged stamp is the max, never moves backwards', () => {
+  const local = { '2026-07-01': day('2026-07-01', { moveBody: true, updatedAt: '2026-07-01T12:00:00.000Z' }) };
+  const remote = { '2026-07-01': day('2026-07-01', { drinkWater: true, updatedAt: '2026-07-01T10:00:00.000Z' }) };
+  const { merged } = mergeEntries(local, remote);
+  assert.equal(merged['2026-07-01'].updatedAt, '2026-07-01T12:00:00.000Z');
+  // Re-merging is idempotent: flags go quiet the second time.
+  const again = mergeEntries(merged, remote);
+  assert.deepEqual(again.merged, merged);
+});
+
+t('merge: output key order is deterministic regardless of input order', () => {
+  const local = {
+    '2026-07-02': day('2026-07-02', { drinkWater: true }),
+    '2026-07-01': day('2026-07-01', { moveBody: true }),
+  };
+  const remote = { '2026-06-30': day('2026-06-30', { moveBody: true }) };
+  const { merged } = mergeEntries(local, remote);
+  assert.deepEqual(Object.keys(merged), ['2026-06-30', '2026-07-01', '2026-07-02']);
+});
+
+t('mergeDayEntry: missing side returns a clone of the other; inputs never mutated', () => {
+  const present = day('2026-07-01', { moveBody: true });
+  const fromMissing = mergeDayEntry(undefined, present);
+  assert.deepEqual(fromMissing, present);
+  assert.notEqual(fromMissing, present);
+  const local = { '2026-07-01': day('2026-07-01', { moveBody: true, note: 'local' }) };
+  const remote = { '2026-07-01': day('2026-07-01', { drinkWater: true, note: 'remote' }) };
+  const localSnap = JSON.parse(JSON.stringify(local));
+  const remoteSnap = JSON.parse(JSON.stringify(remote));
+  mergeEntries(local, remote);
+  assert.deepEqual(local, localSnap);
+  assert.deepEqual(remote, remoteSnap);
+});
+
+// --- three-way merge with a last-synced base ------------------------------
+
+t('3-way: one-sided edit wins even when the other side carries a newer stamp', () => {
+  const base = { '2026-07-01': day('2026-07-01', { moveBody: false, note: 'same', updatedAt: '2026-07-01T08:00:00.000Z' }) };
+  const local = { '2026-07-01': day('2026-07-01', { moveBody: false, note: 'edited here', updatedAt: '2026-07-01T09:00:00.000Z' }) };
+  // Remote re-saved without touching the note (stale client bumping the stamp).
+  const remote = { '2026-07-01': day('2026-07-01', { moveBody: false, note: 'same', updatedAt: '2026-07-01T12:00:00.000Z' }) };
+  const { merged } = mergeEntries(local, remote, base);
+  assert.equal(merged['2026-07-01'].note, 'edited here');
+});
+
+t('3-way: deliberate uncheck beats a stale true from the other device', () => {
+  const base = { '2026-07-01': day('2026-07-01', { moveBody: true, updatedAt: '2026-07-01T08:00:00.000Z' }) };
+  const local = { '2026-07-01': day('2026-07-01', { moveBody: false, updatedAt: '2026-07-01T09:00:00.000Z' }) };
+  const remote = { '2026-07-01': day('2026-07-01', { moveBody: true, updatedAt: '2026-07-01T12:00:00.000Z' }) };
+  const withBase = mergeEntries(local, remote, base);
+  assert.equal(withBase.merged['2026-07-01'].moveBody, false);
+  // Without a base the same inputs stay true-wins (no silent loss).
+  const withoutBase = mergeEntries(local, remote);
+  assert.equal(withoutBase.merged['2026-07-01'].moveBody, true);
+});
+
+t('3-way: same-field conflict on both sides falls back to last-writer-wins, tie to lexical max', () => {
+  const base = { '2026-07-01': day('2026-07-01', { note: 'base', updatedAt: '2026-07-01T08:00:00.000Z' }) };
+  const local = { '2026-07-01': day('2026-07-01', { note: 'from phone', updatedAt: '2026-07-01T09:00:00.000Z' }) };
+  const remote = { '2026-07-01': day('2026-07-01', { note: 'from tablet', updatedAt: '2026-07-01T10:00:00.000Z' }) };
+  assert.equal(mergeEntries(local, remote, base).merged['2026-07-01'].note, 'from tablet');
+  const tied = { '2026-07-01': day('2026-07-01', { note: 'from tablet', updatedAt: '2026-07-01T09:00:00.000Z' }) };
+  // Equal stamps: lexical max ('from tablet' > 'from phone') wins on both sides.
+  assert.equal(mergeEntries(local, tied, base).merged['2026-07-01'].note, 'from tablet');
+  assert.equal(mergeEntries(tied, local, base).merged['2026-07-01'].note, 'from tablet');
+});
+
+t('3-way: null base behaves exactly like the two-way merge', () => {
+  const local = { '2026-07-01': day('2026-07-01', { moveBody: true, updatedAt: '2026-07-01T10:00:00.000Z' }) };
+  const remote = { '2026-07-01': day('2026-07-01', { drinkWater: true, updatedAt: '2026-07-01T12:00:00.000Z' }) };
+  assert.deepEqual(mergeEntries(local, remote, null), mergeEntries(local, remote));
+  assert.deepEqual(mergeEntries(local, remote, undefined), mergeEntries(local, remote));
+});
+
+t('sync base: set/get round-trips a defensive copy', () => {
+  const entries = { '2026-07-01': day('2026-07-01', { moveBody: true }) };
+  setSyncBase(entries);
+  const got = getSyncBase();
+  assert.deepEqual(got, entries);
+  assert.notEqual(got, entries);
+  assert.notEqual(got['2026-07-01'], entries['2026-07-01']);
+  got['2026-07-01'].moveBody = false;
+  assert.equal(getSyncBase()['2026-07-01'].moveBody, true);
+  setSyncBase(null);
+  assert.equal(getSyncBase(), null);
+});
+
+// --- storage persistence guard ---------------------------------------------
+
+t('persistence: standalone detection across iOS and generic platforms', () => {
+  assert.equal(isStandalonePWA({ navigator: { standalone: true } }), true);
+  assert.equal(isStandalonePWA({ navigator: {}, matchMedia: () => ({ matches: true }) }), true);
+  assert.equal(isStandalonePWA({ navigator: {}, matchMedia: () => ({ matches: false }) }), false);
+  assert.equal(isStandalonePWA({}), false);
+  assert.equal(isStandalonePWA({ matchMedia: () => { throw new Error('nope'); } }), false);
+});
+
+t('persistence: capability probe reports each API independently', () => {
+  const full = getPersistenceSupport({
+    navigator: { storage: { persist() {}, persisted() {}, estimate() {}, getDirectory() {} } },
+    indexedDB: {},
+  });
+  assert.deepEqual(full, {
+    storageManager: true,
+    persistFn: true,
+    persistedQuery: true,
+    estimateFn: true,
+    opfs: true,
+    indexedDB: true,
+  });
+  const bare = getPersistenceSupport({});
+  assert.deepEqual(bare, {
+    storageManager: false,
+    persistFn: false,
+    persistedQuery: false,
+    estimateFn: false,
+    opfs: false,
+    indexedDB: false,
+  });
+  // WebKit shape: manager without persist/persisted must not throw.
+  const webkit = getPersistenceSupport({ navigator: { storage: {} } });
+  assert.equal(webkit.storageManager, true);
+  assert.equal(webkit.persistFn, false);
+});
+
+t('persistence: fallback prefers OPFS, then IndexedDB, then none', () => {
+  assert.equal(persistenceFallbackAvailable({ navigator: { storage: { getDirectory() {} } }, indexedDB: {} }), 'opfs');
+  assert.equal(persistenceFallbackAvailable({ navigator: {}, indexedDB: {} }), 'indexeddb');
+  assert.equal(persistenceFallbackAvailable({}), 'none');
+});
+
+t('persistence: check reports grant state and quota without requesting anything', async () => {
+  let persistCalls = 0;
+  const env = {
+    navigator: {
+      standalone: true,
+      storage: {
+        async persisted() { return true; },
+        async estimate() { return { quota: 1000, usage: 10 }; },
+        async persist() { persistCalls++; return true; },
+      },
+    },
+  };
+  const status = await checkPersistence(env);
+  assert.equal(status.persisted, true);
+  assert.deepEqual(status.estimate, { quota: 1000, usage: 10 });
+  assert.equal(status.standalone, true);
+  assert.equal(persistCalls, 0);
+});
+
+t('persistence: check resolves nulls on WebKit-shaped (answer-less) platforms', async () => {
+  const status = await checkPersistence({ navigator: { storage: {} } });
+  assert.equal(status.persisted, null);
+  assert.equal(status.estimate, null);
+  assert.equal(status.fallback, 'none');
+});
+
+t('persistence: ensure skips the request when already granted', async () => {
+  __resetPersistenceMemo();
+  let persistCalls = 0;
+  const env = {
+    navigator: {
+      storage: {
+        async persisted() { return true; },
+        async persist() { persistCalls++; return true; },
+      },
+    },
+  };
+  const result = await ensurePersistence(env);
+  assert.equal(result.requested, false);
+  assert.equal(result.persisted, true);
+  assert.equal(result.alreadyGranted, true);
+  assert.equal(persistCalls, 0);
+});
+
+t('persistence: ensure requests the grant once, memoizes concurrent calls', async () => {
+  __resetPersistenceMemo();
+  let persistCalls = 0;
+  const env = {
+    navigator: {
+      storage: {
+        async persisted() { return false; },
+        async persist() { persistCalls++; return true; },
+      },
+    },
+  };
+  const [a, b] = await Promise.all([ensurePersistence(env), ensurePersistence(env)]);
+  assert.equal(persistCalls, 1);
+  assert.equal(a.requested, true);
+  assert.equal(a.persisted, true);
+  assert.deepEqual(a, b);
+});
+
+t('persistence: ensure resolves ungranted (never rejects) with no APIs at all', async () => {
+  __resetPersistenceMemo();
+  const result = await ensurePersistence({});
+  assert.equal(result.requested, false);
+  assert.equal(result.persisted, null);
+  assert.equal(result.fallback, 'none');
+});
+
+t('persistence: ensure survives a rejecting persist()', async () => {
+  __resetPersistenceMemo();
+  const env = {
+    navigator: {
+      storage: {
+        async persisted() { return false; },
+        async persist() { throw new Error('denied'); },
+      },
+    },
+  };
+  const result = await ensurePersistence(env);
+  assert.equal(result.requested, true);
+  assert.equal(result.persisted, false);
+});
+
 // --- personal data guard -------------------------------------------------
 // Production files must never contain personal paths, private org names,
 // real tokens, or work-in-progress markers. Patterns are built by
@@ -1488,5 +1798,7 @@ t('no personal data or markers in production files', () => {
   }
 });
 
-console.log(`${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+Promise.all(pending).then(() => {
+  console.log(`${pass} passed, ${fail} failed`);
+  process.exit(fail ? 1 : 0);
+});

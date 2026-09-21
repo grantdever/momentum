@@ -9,6 +9,25 @@ function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+// Shared boundary sanitizer used by both the file-import path and the sync
+// pull path. Copies only well-formed day entries (date-shaped key holding a
+// plain object) into a fresh map, counting rejected keys. Hostile keys
+// (prototype-polluting names, non-date keys) and non-object days never reach
+// the merge layer or storage.
+export function sanitizeEntries(raw) {
+  const entries = {};
+  let skipped = 0;
+  if (!isPlainObject(raw)) return { entries, skipped: 0 };
+  for (const [key, value] of Object.entries(raw)) {
+    if (DATE_KEY.test(key) && isPlainObject(value)) {
+      entries[key] = value;
+    } else {
+      skipped++;
+    }
+  }
+  return { entries, skipped };
+}
+
 export function parseImport(jsonString) {
   let parsed;
   try {
@@ -21,15 +40,7 @@ export function parseImport(jsonString) {
     return { error: "That file doesn't look like an Honest Streaks export." };
   }
 
-  const entries = {};
-  let skipped = 0;
-  for (const [key, value] of Object.entries(parsed.entries)) {
-    if (DATE_KEY.test(key) && isPlainObject(value)) {
-      entries[key] = value;
-    } else {
-      skipped++;
-    }
-  }
+  const { entries, skipped } = sanitizeEntries(parsed.entries);
 
   if (Object.keys(entries).length === 0) {
     return { error: 'No valid days found in that file.' };
