@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/test.js && node tests/test-adversarial.js && node tests/test-sync.js"
+    "test": "node tests/test.js && node tests/test-adversarial.js && node tests/test-sync.js && node tests/test-restore.js"
   }
 }

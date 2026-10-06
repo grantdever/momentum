@@ -167,9 +167,17 @@ export function saveLastOpen(dateIso) {
   }
 }
 
-export function exportString(entries, settings) {
+// Build version, stamped into exports. Must match sw.js's CACHE suffix
+// (a test enforces this) so an export says which build wrote it.
+export const APP_VERSION = 'v17';
+
+// exportedFrom records the origin+path the export came from, which matters
+// when an install moves between origins (each origin has its own storage).
+export function exportString(entries, settings, exportedFrom = '') {
   const payload = {
     version: 1,
+    appVersion: APP_VERSION,
+    exportedFrom,
     exportedAt: new Date().toISOString(),
     entries,
     settings: {
