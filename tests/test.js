@@ -1760,7 +1760,7 @@ t('persistence: ensure survives a rejecting persist()', async () => {
 // real tokens, or work-in-progress markers. Patterns are built by
 // concatenation so this test file never matches its own scan.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 
@@ -1775,25 +1775,28 @@ t('no personal data or markers in production files', () => {
     'tools/make-icons.mjs',
     ...readdirSync(join(root, 'js')).map((f) => join('js', f)),
   ];
+  // Generic markers stay inline. Maintainer-specific terms (and the legacy
+  // habit ids) come from a PRIVATE_TERMS env var (CI secret) or an untracked
+  // .private-terms file, so this test never publishes what it guards.
   const forbidden = [
     '/Us' + 'ers/',
-    'ALI' + '_Books',
-    'ali' + '-books',
-    'FRE' + 'OPP',
     'ghp' + '_',
     'github' + '_pat_',
     'TO' + 'DO',
     'FIX' + 'ME',
     'HA' + 'CK',
-    'alcohol' + 'Free',
-    'cooked' + 'AtHome',
-    'slept' + 'OnTime',
-    'work' + 'Sprint',
   ];
+  const privateTerms = (process.env.PRIVATE_TERMS || '').split(',');
+  const localTerms = join(root, '.private-terms');
+  if (existsSync(localTerms)) privateTerms.push(...readFileSync(localTerms, 'utf8').split('\n'));
+  const privates = privateTerms.map((t) => t.trim()).filter((t) => t && !t.startsWith('#'));
   for (const f of files) {
     const text = readFileSync(join(root, f), 'utf8');
     for (const term of forbidden) {
       assert.ok(!text.includes(term), `forbidden term "${term}" found in ${f}`);
+    }
+    for (const term of privates) {
+      assert.ok(!text.includes(term), `a private term was found in ${f}`);
     }
   }
 });

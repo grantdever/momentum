@@ -53,7 +53,7 @@ html, body {
   -webkit-tap-highlight-color: transparent;
   /* The root never scrolls — #app is the scroller. iOS moves fixed elements
      against a scrolling root (toolbar collapse, keyboard viewport leftovers,
-     rubber-band), which exposed content below the nav (Grant, on-device,
+     rubber-band), which exposed content below the nav (observed on-device,
      2026-07-16). A static root gives those bugs nothing to act on. */
   height: 100%;
   overflow: hidden;

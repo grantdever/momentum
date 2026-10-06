@@ -1,3 +1,6 @@
 .DS_Store
 node_modules/
 .env
+
+# Maintainer-specific privacy guard terms (never commit)
+.private-terms
