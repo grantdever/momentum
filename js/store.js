@@ -119,7 +119,7 @@ export function isFreshInstall() {
 
 export function loadSettings() {
   // Fresh install: empty habits + the wizard pending, persisted immediately.
-  // The v1 legacy fabrication (Grant's 8 habits) must never run here — it is
+  // The v1 legacy fabrication (the original 8 default habits) must never run here — it is
   // reserved for storage that actually holds legacy data.
   if (isFreshInstall()) {
     const settings = freshSettings();
