@@ -25,7 +25,7 @@ import {
   validatePlan,
 } from './habits.js';
 import { mergeEntries } from './merge.js';
-import { parseImport, countUpdated } from './importer.js';
+import { parseImport, countUpdated, isEmptyDevice, planSettingsRestore, restoreSummary } from './importer.js';
 import {
   renderAll,
   renderSyncStatus,
@@ -882,6 +882,10 @@ function init() {
       wizardGoStep(2);
     } else if (btn.id === 'wizard-skip') {
       finishWizard();
+    } else if (btn.id === 'wizard-restore') {
+      // Same file picker and import path as Settings → Import JSON; on an
+      // empty device that path does a full restore (habits keep their ids).
+      document.getElementById('import-file').click();
     } else if (btn.classList.contains('wizard-chip')) {
       // Chips seed the anchor field; the text stays free to edit.
       document.getElementById('wizard-anchor').value = btn.textContent;
@@ -920,7 +924,7 @@ function init() {
   });
 
   document.getElementById('export-btn').addEventListener('click', async () => {
-    const json = exportString(state.entries, state.settings);
+    const json = exportString(state.entries, state.settings, window.location.origin + window.location.pathname);
     const filename = `honest-streaks-export-${todayISO()}.json`;
     // Standalone iOS web apps handle the share sheet far more reliably than
     // anchor downloads, so prefer it when file sharing is available.
@@ -944,8 +948,10 @@ function init() {
   });
 
   function setImportStatus(message) {
-    const el = document.getElementById('import-status');
-    if (el) el.textContent = message;
+    for (const id of ['import-status', 'wizard-restore-status']) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = message;
+    }
   }
 
   document.getElementById('import-btn').addEventListener('click', () => {
@@ -962,10 +968,18 @@ function init() {
       setImportStatus(result.error);
       return;
     }
+    const emptyDevice = isEmptyDevice(state.entries, state.settings);
+    const restore = planSettingsRestore(state.settings, result.settings, emptyDevice);
     const before = state.entries;
     const { merged } = mergeEntries(state.entries, result.entries);
     const updated = countUpdated(before, merged, Object.keys(result.entries));
     state.entries = merged;
+    // Habit definitions first: entries are keyed by habit id, so restoring
+    // the original ids is what keeps imported history attached to habits.
+    if (restore.mode !== 'entries') {
+      state.settings = restore.settings;
+      if (!saveSettings(state.settings)) showQuotaError();
+    }
     // Import stays a deliberate two-way merge (never touches the sync base);
     // a quota failure here surfaces instead of reporting a good import.
     if (!persistEntries()) {
@@ -973,11 +987,22 @@ function init() {
       renderAll(state);
       return;
     }
+    // Restored from the wizard: land on Settings, where the status line
+    // ("Restored N days (first–last), M habits.") stays visible to check.
+    if (state.wizard && restore.mode === 'full' && !state.settings.onboarding) {
+      leaveWizard();
+      showView('settings');
+    }
     renderAll(state);
     maybeSync();
+    const skippedNote = result.skipped ? ` ${result.skipped} skipped.` : '';
+    if (restore.mode === 'full') {
+      setImportStatus(restoreSummary(merged, state.settings.habits.length) + skippedNote);
+      return;
+    }
     const total = Object.keys(result.entries).length;
-    const skippedNote = result.skipped ? `, ${result.skipped} skipped` : '';
-    setImportStatus(`Imported — ${total} days merged, ${updated} updated${skippedNote}`);
+    const habitsNote = restore.habitsAdded ? `, ${restore.habitsAdded} habits added` : '';
+    setImportStatus(`Imported — ${total} days merged, ${updated} updated${habitsNote}.${skippedNote}`);
   });
 
   initGestures({

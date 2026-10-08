@@ -1263,13 +1263,13 @@ t('parseImport: bad date keys and non-object values are skipped and counted', ()
   assert.equal(result.skipped, 2);
 });
 
-t('parseImport: settings field in the payload is ignored entirely', () => {
+t('parseImport: the github block in an export never comes through', () => {
   const payload = {
     entries: { '2026-07-01': hitEntry('2026-07-01') },
     settings: { github: { token: 'fake-test-token-value', enabled: true } },
   };
   const result = parseImport(JSON.stringify(payload));
-  assert.equal(result.settings, undefined);
+  assert.equal(result.settings.github, undefined);
   assert.equal(JSON.stringify(result).includes('fake-test-token-value'), false);
 });
 

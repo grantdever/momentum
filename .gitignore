@@ -4,3 +4,7 @@ node_modules/
 
 # Maintainer-specific privacy guard terms (never commit)
 .private-terms
+
+# Personal data exports (never commit)
+*export*.json
+*backup*.json

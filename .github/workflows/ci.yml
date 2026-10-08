@@ -14,4 +14,8 @@ jobs:
         with:
           node-version: '22'
       # No dependencies to install — the pure modules run on plain Node.
-      - run: node tests/test.js
+      - run: npm test
+        env:
+          # Maintainer-specific privacy guard terms (comma-separated repo
+          # secret; empty on forks, where only the generic markers are checked).
+          PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
