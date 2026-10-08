@@ -12,7 +12,7 @@ A personal daily habit tracker, installed as a home-screen web app on iPhone. It
 
 ## Install on iPhone
 
-1. Open **https://momentum.grantdever.com/** in Safari.
+1. Open **https://grantdever.com/momentum/** in Safari.
 2. Tap the Share icon, then **Add to Home Screen**.
 3. Launch it from the home screen icon — it opens full-screen, no browser chrome.
 
